@@ -35,66 +35,51 @@ function formatTime(timestamp: number): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function EmailRow({ thread, onClick, showBucket }: Props) {
+export default function EmailRow({ thread, onClick }: Props) {
   const snippet = unescapeHtml(thread.snippet);
   const { unread } = thread;
-  const primaryBucket = thread.buckets[0];
 
   return (
     <div
       onClick={onClick}
-      className={`group px-4 py-3 border-b cursor-pointer transition-colors ${
+      className={`group flex items-center gap-3 px-4 py-2.5 border-b cursor-pointer transition-colors ${
         unread
-          ? 'bg-white hover:bg-blue-50/30 border-stone-150'
-          : 'bg-stone-50/50 hover:bg-stone-100/60 border-stone-100'
+          ? 'bg-white border-stone-150 hover:bg-blue-50/40'
+          : 'bg-stone-50/60 border-stone-100 hover:bg-stone-100/70'
       }`}
     >
-      {/* Row 1: unread dot + sender + timestamp */}
-      <div className="flex items-center justify-between gap-2 mb-0.5">
-        <div className="flex items-center gap-2 min-w-0">
-          {/* Unread dot */}
-          <div
-            className={`w-1.5 h-1.5 rounded-full shrink-0 transition-all ${
-              unread ? 'bg-blue-500' : 'bg-transparent'
-            }`}
-          />
-          {/* Sender */}
-          <span
-            className={`text-sm truncate ${
-              unread ? 'font-semibold text-stone-900' : 'font-normal text-stone-400'
-            }`}
-          >
-            {thread.sender}
-          </span>
-        </div>
-        {/* Timestamp */}
-        <span
-          className={`text-xs shrink-0 tabular-nums ${
-            unread ? 'font-medium text-stone-600' : 'text-stone-400'
-          }`}
-        >
-          {formatTime(thread.timestamp)}
-        </span>
+      {/* Unread indicator — left accent bar */}
+      <div className="w-1 shrink-0 self-stretch flex items-center">
+        <div className={`w-1 rounded-full transition-all ${unread ? 'h-full bg-blue-500' : 'h-0'}`} />
       </div>
 
-      {/* Row 2: subject + snippet + optional bucket pill */}
-      <div className="flex items-baseline gap-1.5 pl-3.5 min-w-0">
-        <span
-          className={`text-sm truncate shrink-0 max-w-[45%] ${
-            unread ? 'font-medium text-stone-800' : 'text-stone-500'
-          }`}
-        >
+      {/* Sender */}
+      <span
+        className={`w-40 shrink-0 text-sm truncate ${
+          unread ? 'font-semibold text-stone-900' : 'font-normal text-stone-500'
+        }`}
+      >
+        {thread.sender}
+      </span>
+
+      {/* Subject + snippet */}
+      <span className="flex-1 text-sm truncate min-w-0">
+        <span className={unread ? 'font-semibold text-stone-900' : 'font-normal text-stone-700'}>
           {thread.subject}
         </span>
-        <span className="text-xs text-stone-400 truncate min-w-0 flex-1">
-          {snippet}
+        <span className="text-stone-400 font-normal text-[0.8rem]">
+          &ensp;{snippet}
         </span>
-        {showBucket && primaryBucket && (
-          <span className="ml-1 shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border bg-stone-50 text-stone-400 border-stone-200 leading-none">
-            {primaryBucket}
-          </span>
-        )}
-      </div>
+      </span>
+
+      {/* Timestamp */}
+      <span
+        className={`text-xs shrink-0 tabular-nums ${
+          unread ? 'font-medium text-stone-700' : 'text-stone-400'
+        }`}
+      >
+        {formatTime(thread.timestamp)}
+      </span>
     </div>
   );
 }
