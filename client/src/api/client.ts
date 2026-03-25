@@ -1,13 +1,18 @@
-import type { Thread, DraftResult, SummaryResult, BucketSuggestion } from '../types';
+import type {
+  Thread,
+  DraftResult,
+  SummaryResult,
+  BucketSuggestion,
+} from "../types";
 
-const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+const BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    credentials: 'include',
+    credentials: "include",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...init?.headers,
     },
   });
@@ -33,15 +38,15 @@ async function classifyStreamReal(
   callbacks: StreamCallbacks,
 ): Promise<void> {
   const res = await fetch(`${BASE}/api/emails/classify/stream`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ buckets, bucketHints }),
   });
 
   if (!res.ok) {
     if (res.status === 401) {
-      window.location.href = '/api/auth/google';
+      window.location.href = `${BASE}/api/auth/google`;
       return;
     }
     const text = await res.text().catch(() => res.statusText);
@@ -51,12 +56,12 @@ async function classifyStreamReal(
 
   const reader = res.body?.getReader();
   if (!reader) {
-    callbacks.onError('Response body is not readable');
+    callbacks.onError("Response body is not readable");
     return;
   }
 
   const decoder = new TextDecoder();
-  let buffer = '';
+  let buffer = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -65,12 +70,12 @@ async function classifyStreamReal(
     buffer += decoder.decode(value, { stream: true });
 
     // SSE messages are separated by double newlines
-    const parts = buffer.split('\n\n');
-    buffer = parts.pop() ?? '';
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
 
     for (const part of parts) {
       const line = part.trim();
-      if (!line.startsWith('data: ')) continue;
+      if (!line.startsWith("data: ")) continue;
       try {
         const payload = JSON.parse(line.slice(6)) as {
           threads?: Thread[];
@@ -84,7 +89,11 @@ async function classifyStreamReal(
           callbacks.onError(payload.error);
           return;
         }
-        if (payload.threads && payload.completedBatches !== undefined && payload.totalBatches !== undefined) {
+        if (
+          payload.threads &&
+          payload.completedBatches !== undefined &&
+          payload.totalBatches !== undefined
+        ) {
           callbacks.onProgress(payload.completedBatches, payload.totalBatches);
           callbacks.onBatch(payload.threads);
         }
@@ -103,11 +112,11 @@ async function classifyStreamReal(
 
 export const api = {
   getMe(): Promise<{ email: string }> {
-    return apiFetch('/api/auth/me');
+    return apiFetch("/api/auth/me");
   },
 
   logout(): Promise<{ ok: boolean }> {
-    return apiFetch('/api/auth/logout', { method: 'POST' });
+    return apiFetch("/api/auth/logout", { method: "POST" });
   },
 
   classifyStream(
@@ -119,11 +128,16 @@ export const api = {
   },
 
   getSettings(): Promise<{ buckets: Array<{ name: string; hint?: string }> }> {
-    return apiFetch('/api/settings');
+    return apiFetch("/api/settings");
   },
 
-  saveSettings(buckets: Array<{ name: string; hint?: string }>): Promise<{ ok: boolean }> {
-    return apiFetch('/api/settings', { method: 'PUT', body: JSON.stringify(buckets) });
+  saveSettings(
+    buckets: Array<{ name: string; hint?: string }>,
+  ): Promise<{ ok: boolean }> {
+    return apiFetch("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(buckets),
+    });
   },
 
   getThreadBody(threadId: string): Promise<{ body: string }> {
@@ -131,7 +145,7 @@ export const api = {
   },
 
   getThreadIds(): Promise<{ ids: string[] }> {
-    return apiFetch('/api/emails/threads/ids');
+    return apiFetch("/api/emails/threads/ids");
   },
 
   classifyIncremental(
@@ -139,8 +153,8 @@ export const api = {
     buckets: string[],
     bucketHints: Record<string, string>,
   ): Promise<{ threads: Thread[] }> {
-    return apiFetch('/api/emails/classify/incremental', {
-      method: 'POST',
+    return apiFetch("/api/emails/classify/incremental", {
+      method: "POST",
       body: JSON.stringify({ threadIds, buckets, bucketHints }),
     });
   },
@@ -152,31 +166,47 @@ export const api = {
     body: string,
   ): Promise<DraftResult> {
     return apiFetch(`/api/emails/thread/${threadId}/drafts`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ subject, sender, body }),
     });
   },
 
-  getSummary(threadId: string, subject: string, sender: string, body: string): Promise<SummaryResult> {
+  getSummary(
+    threadId: string,
+    subject: string,
+    sender: string,
+    body: string,
+  ): Promise<SummaryResult> {
     return apiFetch(`/api/emails/thread/${threadId}/summary`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ subject, sender, body }),
     });
   },
 
   markRead(threadId: string): Promise<{ ok: boolean }> {
-    return apiFetch(`/api/emails/thread/${threadId}/mark-read`, { method: 'POST' });
+    return apiFetch(`/api/emails/thread/${threadId}/mark-read`, {
+      method: "POST",
+    });
   },
 
   archive(threadId: string): Promise<{ ok: boolean }> {
-    return apiFetch(`/api/emails/thread/${threadId}/archive`, { method: 'POST' });
+    return apiFetch(`/api/emails/thread/${threadId}/archive`, {
+      method: "POST",
+    });
   },
 
-  suggestBuckets(threads: Thread[]): Promise<{ suggestions: BucketSuggestion[] }> {
-    return apiFetch('/api/emails/suggest-buckets', {
-      method: 'POST',
+  suggestBuckets(
+    threads: Thread[],
+  ): Promise<{ suggestions: BucketSuggestion[] }> {
+    return apiFetch("/api/emails/suggest-buckets", {
+      method: "POST",
       body: JSON.stringify({
-        threads: threads.map((t) => ({ subject: t.subject, sender: t.sender, snippet: t.snippet, buckets: t.buckets })),
+        threads: threads.map((t) => ({
+          subject: t.subject,
+          sender: t.sender,
+          snippet: t.snippet,
+          buckets: t.buckets,
+        })),
       }),
     });
   },
