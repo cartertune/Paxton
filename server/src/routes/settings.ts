@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth, getSessionToken } from "../middleware/requireAuth";
 import { tokenStore } from "../services/tokenStore";
 import { getBuckets, saveBuckets } from "../services/db";
+import { DEFAULT_BUCKETS } from "../services/classifier";
 import { z } from "zod";
 
 export const settingsRouter = Router();
@@ -36,9 +37,10 @@ settingsRouter.get("/", requireAuth, async (req, res) => {
 
   try {
     const rows = await getBuckets(record.email);
-    res.json({
-      buckets: rows.map((r) => ({ id: r.id, name: r.name, hint: r.hint ?? undefined })),
-    });
+    const buckets = rows.length > 0
+      ? rows.map((r) => ({ id: r.id, name: r.name, hint: r.hint ?? undefined }))
+      : DEFAULT_BUCKETS;
+    res.json({ buckets });
   } catch (err) {
     console.error("Failed to fetch buckets:", err);
     res.status(500).json({ error: "Failed to fetch settings" });
