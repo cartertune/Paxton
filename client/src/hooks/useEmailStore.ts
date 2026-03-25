@@ -34,7 +34,18 @@ function loadFromStorage(): Partial<PersistedState> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    return JSON.parse(raw) as PersistedState;
+    const parsed = JSON.parse(raw) as PersistedState & { threads?: Array<Record<string, unknown>> };
+    // Migrate threads from old buckets[] (names) to bucketIds[] (ids)
+    if (parsed.threads) {
+      parsed.threads = parsed.threads.map((t) => {
+        if (!t.bucketIds && Array.isArray(t.buckets)) {
+          const { buckets, ...rest } = t as Record<string, unknown> & { buckets: string[] };
+          return { ...rest, bucketIds: buckets };
+        }
+        return t;
+      }) as Thread[];
+    }
+    return parsed;
   } catch {
     return {};
   }
