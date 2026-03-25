@@ -1,6 +1,6 @@
-import { Router } from 'express';
-import { google } from 'googleapis';
-import { tokenStore } from '../services/tokenStore';
+import { Router } from "express";
+import { google } from "googleapis";
+import { tokenStore } from "../services/tokenStore";
 
 export const authRouter = Router();
 
@@ -12,23 +12,23 @@ function createOAuthClient() {
   );
 }
 
-authRouter.get('/google', (req, res) => {
+authRouter.get("/google", (req, res) => {
   const oauth2Client = createOAuthClient();
   const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    prompt: 'consent',
+    access_type: "offline",
+    prompt: "consent",
     scope: [
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/userinfo.email',
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/userinfo.email",
     ],
   });
   res.redirect(url);
 });
 
-authRouter.get('/callback', async (req, res) => {
+authRouter.get("/callback", async (req, res) => {
   const code = req.query.code as string | undefined;
   if (!code) {
-    res.status(400).send('Missing code');
+    res.status(400).send("Missing code");
     return;
   }
 
@@ -38,38 +38,38 @@ authRouter.get('/callback', async (req, res) => {
     oauth2Client.setCredentials(tokens);
 
     // Fetch user email
-    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const oauth2 = google.oauth2({ version: "v2", auth: oauth2Client });
     const { data } = await oauth2.userinfo.get();
-    const email = data.email ?? 'unknown';
+    const email = data.email ?? "unknown";
 
-    tokenStore.set(req.session.id, { tokens, email });
+    await tokenStore.set(req.session.id, { tokens, email });
 
     // Save session explicitly before redirecting so the cookie is committed
     req.session.save((err) => {
       if (err) {
-        console.error('Session save error:', err);
-        res.status(500).send('Session error');
+        console.error("Session save error:", err);
+        res.status(500).send("Session error");
         return;
       }
-      res.redirect(process.env.CLIENT_ORIGIN ?? 'http://localhost:5173');
+      res.redirect(process.env.CLIENT_ORIGIN ?? "http://localhost:5173");
     });
   } catch (err) {
-    console.error('OAuth callback error:', err);
-    res.status(500).send('OAuth error');
+    console.error("OAuth callback error:", err);
+    res.status(500).send("OAuth error");
   }
 });
 
-authRouter.get('/me', (req, res) => {
-  const record = tokenStore.get(req.session.id);
+authRouter.get("/me", async (req, res) => {
+  const record = await tokenStore.get(req.session.id);
   if (!record) {
-    res.status(401).json({ error: 'Unauthorized' });
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
   res.json({ email: record.email });
 });
 
-authRouter.post('/logout', (req, res) => {
-  tokenStore.delete(req.session.id);
+authRouter.post("/logout", async (req, res) => {
+  await tokenStore.delete(req.session.id);
   req.session.destroy(() => {
     res.json({ ok: true });
   });

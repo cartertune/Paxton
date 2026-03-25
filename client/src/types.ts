@@ -19,3 +19,15 @@ export interface DraftResult {
   intentLabel: string;
   drafts: DraftReply[];
 }
+
+export interface SummaryResult {
+  summary: string;
+  actionRequired: boolean;
+}
+
+export interface BucketSuggestion {
+  name: string;
+  hint: string;
+  matchCount: number;
+  rationale: string;
+}

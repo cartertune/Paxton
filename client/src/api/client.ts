@@ -1,4 +1,4 @@
-import type { Thread, DraftResult } from '../types';
+import type { Thread, DraftResult, SummaryResult, BucketSuggestion } from '../types';
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -154,6 +154,30 @@ export const api = {
     return apiFetch(`/api/emails/thread/${threadId}/drafts`, {
       method: 'POST',
       body: JSON.stringify({ subject, sender, body }),
+    });
+  },
+
+  getSummary(threadId: string, subject: string, sender: string, body: string): Promise<SummaryResult> {
+    return apiFetch(`/api/emails/thread/${threadId}/summary`, {
+      method: 'POST',
+      body: JSON.stringify({ subject, sender, body }),
+    });
+  },
+
+  markRead(threadId: string): Promise<{ ok: boolean }> {
+    return apiFetch(`/api/emails/thread/${threadId}/mark-read`, { method: 'POST' });
+  },
+
+  archive(threadId: string): Promise<{ ok: boolean }> {
+    return apiFetch(`/api/emails/thread/${threadId}/archive`, { method: 'POST' });
+  },
+
+  suggestBuckets(threads: Thread[]): Promise<{ suggestions: BucketSuggestion[] }> {
+    return apiFetch('/api/emails/suggest-buckets', {
+      method: 'POST',
+      body: JSON.stringify({
+        threads: threads.map((t) => ({ subject: t.subject, sender: t.sender, snippet: t.snippet, buckets: t.buckets })),
+      }),
     });
   },
 };

@@ -1,5 +1,5 @@
-import type { Credentials } from 'google-auth-library';
-import { dbGetToken, dbSetToken, dbUpdateTokens, dbDeleteToken } from './db';
+import type { Credentials } from "google-auth-library";
+import { dbGetToken, dbSetToken, dbUpdateTokens, dbDeleteToken } from "./db";
 
 interface TokenRecord {
   tokens: Credentials;
@@ -7,18 +7,18 @@ interface TokenRecord {
 }
 
 export const tokenStore = {
-  set(sessionId: string, record: TokenRecord): void {
-    dbSetToken(sessionId, record.email, record.tokens);
+  async set(sessionId: string, record: TokenRecord): Promise<void> {
+    await dbSetToken(sessionId, record.email, record.tokens);
   },
-  get(sessionId: string): TokenRecord | undefined {
-    const row = dbGetToken(sessionId);
+  async get(sessionId: string): Promise<TokenRecord | undefined> {
+    const row = await dbGetToken(sessionId);
     if (!row) return undefined;
     return { email: row.email, tokens: row.tokens as Credentials };
   },
-  updateTokens(sessionId: string, tokens: Credentials): void {
-    dbUpdateTokens(sessionId, tokens);
+  async updateTokens(sessionId: string, tokens: Credentials): Promise<void> {
+    await dbUpdateTokens(sessionId, tokens);
   },
-  delete(sessionId: string): void {
-    dbDeleteToken(sessionId);
+  async delete(sessionId: string): Promise<void> {
+    await dbDeleteToken(sessionId);
   },
 };

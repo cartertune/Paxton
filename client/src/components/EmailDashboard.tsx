@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { Thread } from '../types';
+import type { Thread, BucketSuggestion } from '../types';
 import EmailRow from './EmailRow';
 import AddBucketModal from './AddBucketModal';
 import ThreadDetailPanel from './ThreadDetailPanel';
@@ -48,11 +48,16 @@ interface Props {
   completedBatches: number;
   totalBatches: number;
   lastSyncedAt: Date | null;
+  bucketSuggestions: BucketSuggestion[];
+  onDismissSuggestion: (name: string) => void;
+  onAcceptSuggestion: (suggestion: BucketSuggestion) => void;
+  onRemoveThread: (id: string) => void;
+  onMarkThreadRead: (id: string) => void;
 }
 
 const ALL_TAB = 'All';
 
-export default function EmailDashboard({ threads, buckets, userEmail, onAddBucket, onSync, onLogout, onOpenSettings, isClassifying, completedBatches, totalBatches, lastSyncedAt }: Props) {
+export default function EmailDashboard({ threads, buckets, userEmail, onAddBucket, onSync, onLogout, onOpenSettings, isClassifying, completedBatches, totalBatches, lastSyncedAt, bucketSuggestions, onDismissSuggestion, onAcceptSuggestion, onRemoveThread, onMarkThreadRead }: Props) {
   const [activeTab, setActiveTab] = useState<string>('Important');
   const [showAddBucket, setShowAddBucket] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -257,6 +262,34 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
         </div>
       </nav>
 
+      {/* Bucket suggestion banners */}
+      {bucketSuggestions.length > 0 && (
+        <div className="border-b border-blue-100 bg-blue-50">
+          {bucketSuggestions.map((s) => (
+            <div key={s.name} className="flex items-center gap-3 px-4 py-2.5">
+              <svg className="w-4 h-4 text-blue-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+              </svg>
+              <p className="text-xs text-blue-800 flex-1">
+                <span className="font-medium">Suggestion:</span> Create a &ldquo;{s.name}&rdquo; bucket ({s.matchCount} matching emails)
+              </p>
+              <button
+                onClick={() => onAcceptSuggestion(s)}
+                className="text-xs font-medium text-blue-700 hover:text-blue-900 px-2 py-1 bg-white border border-blue-200 rounded-md hover:bg-blue-50 transition-colors shrink-0"
+              >
+                Add bucket
+              </button>
+              <button
+                onClick={() => onDismissSuggestion(s.name)}
+                className="text-xs text-blue-400 hover:text-blue-600 transition-colors shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Horizontal tab bar */}
       <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm">
         <div className="flex items-center px-4 overflow-x-auto">
@@ -344,7 +377,7 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
                 </span>
               </div>
               {group.threads.map((t) => (
-                <EmailRow key={t.id} thread={t} onClick={() => setSelectedThread(t)} />
+                <EmailRow key={t.id} thread={t} onClick={() => setSelectedThread(t)} showBucket={resolvedTab === ALL_TAB} />
               ))}
             </div>
           ))
@@ -365,6 +398,8 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
           threads={displayedThreads}
           onClose={() => setSelectedThread(null)}
           onNavigate={(t) => setSelectedThread(t)}
+          onArchive={(id) => { onRemoveThread(id); setSelectedThread(null); }}
+          onMarkRead={(id) => onMarkThreadRead(id)}
         />
       )}
     </div>

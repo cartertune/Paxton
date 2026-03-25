@@ -27,6 +27,8 @@ export type Action =
   | { type: 'SET_BUCKETS'; payload: Array<{ name: string; hint?: string }> }
   | { type: 'SET_ERROR'; payload: string }
   | { type: 'SET_USER'; payload: string }
+  | { type: 'REMOVE_THREAD'; payload: string }
+  | { type: 'MARK_THREAD_READ'; payload: string }
   | { type: 'RESET' };
 
 const STORAGE_KEY = 'paxton_state';
@@ -132,6 +134,17 @@ function reducer(state: AppState, action: Action): AppState {
       break;
     case 'SET_USER':
       next = { ...state, userEmail: action.payload };
+      break;
+    case 'REMOVE_THREAD':
+      next = { ...state, threads: state.threads.filter((t) => t.id !== action.payload) };
+      break;
+    case 'MARK_THREAD_READ':
+      next = {
+        ...state,
+        threads: state.threads.map((t) =>
+          t.id === action.payload ? { ...t, unread: false } : t
+        ),
+      };
       break;
     case 'RESET':
       clearStorage();

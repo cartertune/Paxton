@@ -1,4 +1,4 @@
-import type { DraftResult } from './types';
+import type { DraftResult, SummaryResult } from './types';
 
 // --- Thread body cache ---
 // Keyed by thread ID. Survives page refresh, cleared on RESET.
@@ -64,10 +64,43 @@ export function setCachedDraft(threadId: string, result: DraftResult) {
   saveDraftCache(cache);
 }
 
+// --- Summary cache ---
+// Keyed by thread ID. Cleared when threads are reset (reclassification).
+
+const SUMMARY_CACHE_KEY = 'paxton_summary_cache';
+
+function loadSummaryCache(): Record<string, SummaryResult> {
+  try {
+    const raw = localStorage.getItem(SUMMARY_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, SummaryResult>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSummaryCache(cache: Record<string, SummaryResult>) {
+  try {
+    localStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // quota exceeded — silently ignore
+  }
+}
+
+export function getCachedSummary(threadId: string): SummaryResult | null {
+  return loadSummaryCache()[threadId] ?? null;
+}
+
+export function setCachedSummary(threadId: string, result: SummaryResult) {
+  const cache = loadSummaryCache();
+  cache[threadId] = result;
+  saveSummaryCache(cache);
+}
+
 export function clearAllCaches() {
   try {
     localStorage.removeItem(BODY_CACHE_KEY);
     localStorage.removeItem(DRAFT_CACHE_KEY);
+    localStorage.removeItem(SUMMARY_CACHE_KEY);
   } catch {
     // ignore
   }

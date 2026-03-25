@@ -5,6 +5,7 @@ import LoginPage from './components/LoginPage';
 import EmailDashboard from './components/EmailDashboard';
 import ErrorBanner from './components/ErrorBanner';
 import SettingsPage from './components/SettingsPage';
+import type { BucketSuggestion } from './types';
 
 export default function App() {
   const [state, dispatch] = useEmailStore();
@@ -14,6 +15,7 @@ export default function App() {
     // If we have cached threads, assume they were synced recently (we don't know exactly when)
     null
   );
+  const [bucketSuggestions, setBucketSuggestions] = useState<BucketSuggestion[]>([]);
 
   // Mirror state into a ref so the poll interval always reads current values
   const stateRef = useRef(state);
@@ -105,6 +107,9 @@ export default function App() {
         onDone: () => {
           dispatch({ type: 'SET_STATUS', payload: 'ready' });
           setLastSyncedAt(new Date());
+          api.suggestBuckets(stateRef.current.threads)
+            .then((res) => setBucketSuggestions(res.suggestions))
+            .catch(() => {}); // silently ignore
         },
         onError: (message) => {
           dispatch({ type: 'SET_ERROR', payload: message });
@@ -204,6 +209,18 @@ export default function App() {
           completedBatches={state.completedBatches}
           totalBatches={state.totalBatches}
           lastSyncedAt={lastSyncedAt}
+          bucketSuggestions={bucketSuggestions}
+          onDismissSuggestion={(name) => setBucketSuggestions((s) => s.filter((x) => x.name !== name))}
+          onAcceptSuggestion={(suggestion) => {
+            dispatch({ type: 'ADD_BUCKET', payload: { name: suggestion.name, hint: suggestion.hint } });
+            const updatedBuckets = state.buckets.includes(suggestion.name) ? state.buckets : [...state.buckets, suggestion.name];
+            const updatedHints = suggestion.hint ? { ...state.bucketHints, [suggestion.name]: suggestion.hint } : state.bucketHints;
+            const payload = updatedBuckets.map((b) => ({ name: b, hint: updatedHints[b] }));
+            api.saveSettings(payload).catch(() => {});
+            setBucketSuggestions((s) => s.filter((x) => x.name !== suggestion.name));
+          }}
+          onRemoveThread={(id) => dispatch({ type: 'REMOVE_THREAD', payload: id })}
+          onMarkThreadRead={(id) => dispatch({ type: 'MARK_THREAD_READ', payload: id })}
         />
       )}
 
