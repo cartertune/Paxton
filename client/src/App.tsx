@@ -7,8 +7,9 @@ import ErrorBanner from "./components/ErrorBanner";
 import SettingsPage from "./components/SettingsPage";
 import type { BucketSuggestion } from "./types";
 
-// @ts-ignore - version is defined in package.json
-const VERSION = __APP_VERSION__ || "1.0.0";
+// Version from vite config or fallback
+const VERSION =
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "1.0.0";
 
 export default function App() {
   const [state, dispatch] = useEmailStore();
@@ -221,11 +222,23 @@ export default function App() {
 
   // Show login page when idle and not authenticated
   if (state.status === "idle") {
-    return <LoginPage />;
+    return (
+      <>
+        <LoginPage />
+        {/* Version number in bottom right */}
+        <div className="fixed bottom-4 right-4 text-xs text-stone-400 pointer-events-none">
+          v{VERSION}
+        </div>
+      </>
+    );
   }
 
   return (
     <>
+      {/* Version number in bottom right */}
+      <div className="fixed bottom-4 right-4 text-xs text-stone-400 pointer-events-none">
+        v{VERSION}
+      </div>
       {state.status === "error" && state.error && (
         <ErrorBanner
           message={state.error}
@@ -291,11 +304,6 @@ export default function App() {
           onClose={() => setShowSettings(false)}
         />
       )}
-
-      {/* Version number in bottom right */}
-      <div className="fixed bottom-4 right-4 text-xs text-stone-400 pointer-events-none">
-        v{VERSION}
-      </div>
     </>
   );
 }
