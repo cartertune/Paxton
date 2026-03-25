@@ -41,11 +41,14 @@ app.use(
     secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
+    name: "paxton.sid",
+    proxy: IS_PROD,
     cookie: {
       httpOnly: true,
       sameSite: IS_PROD ? "none" : "lax",
       secure: IS_PROD,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
     },
   }),
 );
