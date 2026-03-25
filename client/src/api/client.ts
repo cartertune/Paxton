@@ -101,7 +101,12 @@ export const api = {
             done?: boolean;
             error?: string;
           };
-          if (payload.error) throw new Error(payload.error);
+          if (payload.error) {
+            if (payload.error === "GMAIL_PERMISSION_DENIED") {
+              throw new Error("Gmail access was denied. Your Google account may not be authorized to use this app yet. Please contact the app owner to be added as a test user.");
+            }
+            throw new Error(payload.error);
+          }
           if (payload.threads) allThreads.push(...payload.threads);
           if (payload.completedBatches !== undefined && payload.totalBatches && payload.totalBatches > 0) {
             onProgress?.(Math.round((payload.completedBatches / payload.totalBatches) * 100));

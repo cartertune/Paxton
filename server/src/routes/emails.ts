@@ -96,9 +96,18 @@ emailsRouter.post(
       );
 
       send({ done: true });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Streaming classification error:", err);
-      send({ error: "Classification failed" });
+      const isPermissionError =
+        err?.code === 403 ||
+        err?.status === 403 ||
+        err?.response?.status === 403 ||
+        (typeof err?.message === "string" && err.message.toLowerCase().includes("insufficient permission"));
+      if (isPermissionError) {
+        send({ error: "GMAIL_PERMISSION_DENIED" });
+      } else {
+        send({ error: "Classification failed" });
+      }
     } finally {
       res.end();
     }
