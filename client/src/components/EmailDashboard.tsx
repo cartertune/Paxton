@@ -45,8 +45,6 @@ interface Props {
   onLogout: () => void;
   onOpenSettings: () => void;
   isClassifying: boolean;
-  completedBatches: number;
-  totalBatches: number;
   lastSyncedAt: Date | null;
   bucketSuggestions: BucketSuggestion[];
   onDismissSuggestion: (name: string) => void;
@@ -57,7 +55,7 @@ interface Props {
 
 const ALL_TAB = 'All';
 
-export default function EmailDashboard({ threads, buckets, userEmail, onAddBucket, onSync, onLogout, onOpenSettings, isClassifying, completedBatches, totalBatches, lastSyncedAt, bucketSuggestions, onDismissSuggestion, onAcceptSuggestion, onRemoveThread, onMarkThreadRead }: Props) {
+export default function EmailDashboard({ threads, buckets, userEmail, onAddBucket, onSync, onLogout, onOpenSettings, isClassifying, lastSyncedAt, bucketSuggestions, onDismissSuggestion, onAcceptSuggestion, onRemoveThread, onMarkThreadRead }: Props) {
   const [activeTab, setActiveTab] = useState<string>('Important');
   const [showAddBucket, setShowAddBucket] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -122,8 +120,7 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
   useEffect(() => {
     if (isClassifying) {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      const pct = totalBatches > 0 ? (completedBatches / totalBatches) * 100 : 5;
-      setDisplayPct(Math.max(pct, 5));
+      setDisplayPct(50);
       setShowProgress(true);
     } else if (showProgress) {
       // Classification just finished — hold at 100%, then fade out
@@ -134,7 +131,7 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClassifying, completedBatches, totalBatches]);
+  }, [isClassifying]);
 
   return (
     <div className="flex flex-col h-screen bg-stone-50">

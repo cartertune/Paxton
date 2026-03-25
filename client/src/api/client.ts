@@ -47,98 +47,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export interface StreamCallbacks {
-  onProgress: (completedBatches: number, totalBatches: number) => void;
-  onBatch: (threads: Thread[]) => void;
-  onDone: () => void;
-  onError: (message: string) => void;
-}
-
-async function classifyStreamReal(
-  buckets: string[],
-  bucketHints: Record<string, string>,
-  callbacks: StreamCallbacks,
-): Promise<void> {
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-
-  // Add Bearer token if available
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
-  }
-
-  const res = await fetch(`${BASE}/api/emails/classify/stream`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ buckets, bucketHints }),
-  });
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      window.location.href = `${BASE}/api/auth/google`;
-      return;
-    }
-    const text = await res.text().catch(() => res.statusText);
-    callbacks.onError(`${res.status}: ${text}`);
-    return;
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) {
-    callbacks.onError("Response body is not readable");
-    return;
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    // SSE messages are separated by double newlines
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop() ?? "";
-
-    for (const part of parts) {
-      const line = part.trim();
-      if (!line.startsWith("data: ")) continue;
-      try {
-        const payload = JSON.parse(line.slice(6)) as {
-          threads?: Thread[];
-          completedBatches?: number;
-          totalBatches?: number;
-          done?: boolean;
-          error?: string;
-        };
-
-        if (payload.error) {
-          callbacks.onError(payload.error);
-          return;
-        }
-        if (
-          payload.threads &&
-          payload.completedBatches !== undefined &&
-          payload.totalBatches !== undefined
-        ) {
-          callbacks.onProgress(payload.completedBatches, payload.totalBatches);
-          callbacks.onBatch(payload.threads);
-        }
-        if (payload.done) {
-          callbacks.onDone();
-          return;
-        }
-      } catch {
-        // Malformed SSE line — skip
-      }
-    }
-  }
-
-  callbacks.onDone();
-}
 
 export const api = {
   getMe(): Promise<{ email: string }> {
@@ -149,12 +57,14 @@ export const api = {
     return apiFetch("/api/auth/logout", { method: "POST" });
   },
 
-  classifyStream(
+  classifyAll(
     buckets: string[],
     bucketHints: Record<string, string>,
-    callbacks: StreamCallbacks,
-  ): Promise<void> {
-    return classifyStreamReal(buckets, bucketHints, callbacks);
+  ): Promise<{ threads: Thread[] }> {
+    return apiFetch("/api/emails/classify", {
+      method: "POST",
+      body: JSON.stringify({ buckets, bucketHints }),
+    });
   },
 
   getSettings(): Promise<{ buckets: Array<{ name: string; hint?: string }> }> {

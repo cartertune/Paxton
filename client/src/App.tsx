@@ -124,34 +124,16 @@ export default function App() {
     if (classifyingRef.current) return;
     classifyingRef.current = true;
     dispatch({ type: "SET_STATUS", payload: "classifying" });
-    dispatch({
-      type: "SET_PROGRESS",
-      payload: { completedBatches: 0, totalBatches: 0 },
-    });
 
     try {
-      await api.classifyStream(buckets, bucketHints, {
-        onProgress: (completedBatches, totalBatches) => {
-          dispatch({
-            type: "SET_PROGRESS",
-            payload: { completedBatches, totalBatches },
-          });
-        },
-        onBatch: (threads) => {
-          dispatch({ type: "BATCH_RESOLVED", payload: threads });
-        },
-        onDone: () => {
-          dispatch({ type: "SET_STATUS", payload: "ready" });
-          setLastSyncedAt(new Date());
-          api
-            .suggestBuckets(stateRef.current.threads)
-            .then((res) => setBucketSuggestions(res.suggestions))
-            .catch(() => {}); // silently ignore
-        },
-        onError: (message) => {
-          dispatch({ type: "SET_ERROR", payload: message });
-        },
-      });
+      const { threads } = await api.classifyAll(buckets, bucketHints);
+      dispatch({ type: "BATCH_RESOLVED", payload: threads });
+      dispatch({ type: "SET_STATUS", payload: "ready" });
+      setLastSyncedAt(new Date());
+      api
+        .suggestBuckets(stateRef.current.threads)
+        .then((res) => setBucketSuggestions(res.suggestions))
+        .catch(() => {});
     } catch (err) {
       dispatch({
         type: "SET_ERROR",
@@ -173,6 +155,11 @@ export default function App() {
     const updatedHints = hint
       ? { ...state.bucketHints, [name]: hint }
       : state.bucketHints;
+    const payload = updatedBuckets.map((b) => ({
+      name: b,
+      hint: updatedHints[b],
+    }));
+    api.saveSettings(payload).catch(() => {});
     classify(updatedBuckets, updatedHints);
   };
 
@@ -278,8 +265,6 @@ export default function App() {
           onLogout={handleLogout}
           onOpenSettings={() => setShowSettings(true)}
           isClassifying={isClassifying}
-          completedBatches={state.completedBatches}
-          totalBatches={state.totalBatches}
           lastSyncedAt={lastSyncedAt}
           bucketSuggestions={bucketSuggestions}
           onDismissSuggestion={(name) =>

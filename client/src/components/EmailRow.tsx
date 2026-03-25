@@ -63,14 +63,14 @@ export default function EmailRow({ thread, onClick }: Props) {
       </span>
 
       {/* Subject + snippet */}
-      <span className="flex-1 text-sm truncate min-w-0">
-        <span className={unread ? 'font-semibold text-stone-900' : 'font-normal text-stone-700'}>
+      <div className="flex-1 flex flex-col min-w-0 justify-center">
+        <span className={`text-sm truncate ${unread ? 'font-semibold text-stone-900' : 'font-normal text-stone-700'}`}>
           {thread.subject}
         </span>
-        <span className="text-stone-400 font-normal text-[0.8rem]">
-          &ensp;{snippet}
+        <span className="text-[0.75rem] text-stone-400 font-normal truncate leading-tight">
+          {snippet}
         </span>
-      </span>
+      </div>
 
       {/* Timestamp */}
       <span
