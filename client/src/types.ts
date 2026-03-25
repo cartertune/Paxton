@@ -5,8 +5,14 @@ export interface Thread {
   snippet: string;
   timestamp: number;
   unread: boolean;
-  buckets: string[];
-  bucketReasons: Record<string, string>;
+  bucketIds: string[];
+  bucketReasons: Record<string, string>; // keyed by bucket ID
+}
+
+export interface Bucket {
+  id: string;
+  name: string;
+  hint?: string;
 }
 
 export interface DraftReply {

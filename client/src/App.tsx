@@ -5,7 +5,7 @@ import LoginPage from "./components/LoginPage";
 import EmailDashboard from "./components/EmailDashboard";
 import ErrorBanner from "./components/ErrorBanner";
 import SettingsPage from "./components/SettingsPage";
-import type { BucketSuggestion } from "./types";
+import type { Bucket, BucketSuggestion } from "./types";
 
 // Version from vite config or fallback
 const VERSION =
@@ -16,13 +16,8 @@ export default function App() {
   const classifyingRef = useRef(false);
   const [classifyProgress, setClassifyProgress] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(
-    // If we have cached threads, assume they were synced recently (we don't know exactly when)
-    null,
-  );
-  const [bucketSuggestions, setBucketSuggestions] = useState<
-    BucketSuggestion[]
-  >([]);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [bucketSuggestions, setBucketSuggestions] = useState<BucketSuggestion[]>([]);
 
   // Mirror state into a ref so the poll interval always reads current values
   const stateRef = useRef(state);
@@ -30,7 +25,7 @@ export default function App() {
     stateRef.current = state;
   });
 
-  // On mount: check auth; load settings from DB; skip classification if we already have cached threads
+  // On mount: check auth; load buckets from DB; skip classification if we already have cached threads
   useEffect(() => {
     async function init() {
       // Check for token in URL (from OAuth callback)
@@ -38,15 +33,9 @@ export default function App() {
       const tokenFromUrl = urlParams.get("token");
       if (tokenFromUrl) {
         setAuthToken(tokenFromUrl);
-        // Clean up URL
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname,
-        );
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
 
-      // Check if we have a token
       if (!getAuthToken()) {
         dispatch({ type: "SET_STATUS", payload: "idle" });
         return;
@@ -56,18 +45,17 @@ export default function App() {
         const { email } = await api.getMe();
         dispatch({ type: "SET_USER", payload: email });
 
-        // Always load bucket settings from the DB so they stay in sync
+        // Load buckets from DB
         try {
           const settings = await api.getSettings();
           if (settings.buckets.length > 0) {
             dispatch({ type: "SET_BUCKETS", payload: settings.buckets });
           }
         } catch {
-          // Settings endpoint not yet deployed — fall back to local state
+          // Settings endpoint unavailable — buckets will be loaded server-side during classify
         }
 
         if (state.threads.length > 0) {
-          // Already have classified results in localStorage — show them immediately
           dispatch({ type: "SET_STATUS", payload: "ready" });
           return;
         }
@@ -75,7 +63,6 @@ export default function App() {
         dispatch({ type: "SET_STATUS", payload: "loading" });
         await classify();
       } catch {
-        // Not logged in — stay idle
         dispatch({ type: "SET_STATUS", payload: "idle" });
       }
     }
@@ -84,7 +71,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-poll every 90 seconds for new threads, classify only the new ones silently
+  // Auto-poll every 90 seconds for new threads
   useEffect(() => {
     const POLL_INTERVAL_MS = 90_000;
 
@@ -132,28 +119,27 @@ export default function App() {
     } catch (err) {
       dispatch({
         type: "SET_ERROR",
-        payload:
-          err instanceof Error ? err.message : "Failed to classify emails",
+        payload: err instanceof Error ? err.message : "Failed to classify emails",
       });
     } finally {
       classifyingRef.current = false;
     }
   }
 
-  const handleAddBucket = (name: string, hint?: string) => {
-    dispatch({ type: "ADD_BUCKET", payload: { name, hint } });
-    const updatedBuckets = state.buckets.includes(name)
-      ? state.buckets
-      : [...state.buckets, name];
-    const updatedHints = hint
-      ? { ...state.bucketHints, [name]: hint }
-      : state.bucketHints;
-    const payload = updatedBuckets.map((b) => ({
-      name: b,
-      hint: updatedHints[b],
-    }));
-    api.saveSettings(payload).catch(() => {});
+  async function saveBucketsAndReclassify(buckets: Bucket[]) {
+    try {
+      const { buckets: saved } = await api.saveSettings(buckets);
+      dispatch({ type: "SET_BUCKETS", payload: saved });
+    } catch {
+      dispatch({ type: "SET_BUCKETS", payload: buckets });
+    }
     classify();
+  }
+
+  const handleAddBucket = (name: string, hint?: string) => {
+    if (state.buckets.some((b) => b.name === name)) return;
+    const updated = [...state.buckets, { id: crypto.randomUUID(), name, hint }];
+    saveBucketsAndReclassify(updated);
   };
 
   const handleSync = () => {
@@ -170,51 +156,16 @@ export default function App() {
     }
   };
 
-  const handleSaveBucket = async (name: string, hint: string) => {
-    const updatedBuckets = state.buckets.includes(name)
-      ? state.buckets
-      : [...state.buckets, name];
-    const updatedHints = { ...state.bucketHints, [name]: hint };
-    const payload = updatedBuckets.map((b) => ({
-      name: b,
-      hint: updatedHints[b],
-    }));
-    try {
-      await api.saveSettings(payload);
-    } catch {
-      // Non-fatal
-    }
-    dispatch({ type: "SET_BUCKETS", payload });
-    classify();
+  const handleSaveBucket = (bucket: Bucket) => {
+    const updated = state.buckets.some((b) => b.id === bucket.id)
+      ? state.buckets.map((b) => (b.id === bucket.id ? bucket : b))
+      : [...state.buckets, bucket];
+    saveBucketsAndReclassify(updated);
   };
 
-  const handleDeleteBucket = async (name: string) => {
-    const updatedBuckets = state.buckets.filter((b) => b !== name);
-    const updatedHints = { ...state.bucketHints };
-    delete updatedHints[name];
-    const payload = updatedBuckets.map((b) => ({
-      name: b,
-      hint: updatedHints[b],
-    }));
-    try {
-      await api.saveSettings(payload);
-    } catch {
-      // Non-fatal
-    }
-    dispatch({ type: "SET_BUCKETS", payload });
-    classify();
-  };
-
-  const handleAddBucketFromSettings = (name: string, hint: string) => {
-    const updatedBuckets = [...state.buckets, name];
-    const updatedHints = { ...state.bucketHints, [name]: hint };
-    const payload = updatedBuckets.map((b) => ({
-      name: b,
-      hint: updatedHints[b],
-    }));
-    api.saveSettings(payload).catch(() => {});
-    dispatch({ type: "ADD_BUCKET", payload: { name, hint } });
-    classify();
+  const handleDeleteBucket = (id: string) => {
+    const updated = state.buckets.filter((b) => b.id !== id);
+    saveBucketsAndReclassify(updated);
   };
 
   const isClassifying =
@@ -225,7 +176,6 @@ export default function App() {
     return (
       <>
         <LoginPage />
-        {/* Version number in bottom right */}
         <div className="fixed bottom-4 right-4 text-xs text-stone-400 pointer-events-none">
           v{VERSION}
         </div>
@@ -235,7 +185,6 @@ export default function App() {
 
   return (
     <>
-      {/* Version number in bottom right */}
       <div className="fixed bottom-4 right-4 text-xs text-stone-400 pointer-events-none">
         v{VERSION}
       </div>
@@ -246,9 +195,7 @@ export default function App() {
         />
       )}
 
-      {(state.status === "ready" ||
-        isClassifying ||
-        state.threads.length > 0) && (
+      {(state.status === "ready" || isClassifying || state.threads.length > 0) && (
         <EmailDashboard
           threads={state.threads}
           buckets={state.buckets}
@@ -265,43 +212,21 @@ export default function App() {
             setBucketSuggestions((s) => s.filter((x) => x.name !== name))
           }
           onAcceptSuggestion={(suggestion) => {
-            dispatch({
-              type: "ADD_BUCKET",
-              payload: { name: suggestion.name, hint: suggestion.hint },
-            });
-            const updatedBuckets = state.buckets.includes(suggestion.name)
-              ? state.buckets
-              : [...state.buckets, suggestion.name];
-            const updatedHints = suggestion.hint
-              ? { ...state.bucketHints, [suggestion.name]: suggestion.hint }
-              : state.bucketHints;
-            const payload = updatedBuckets.map((b) => ({
-              name: b,
-              hint: updatedHints[b],
-            }));
-            api.saveSettings(payload).catch(() => {});
-            setBucketSuggestions((s) =>
-              s.filter((x) => x.name !== suggestion.name),
-            );
-            // Reclassify all emails with the new bucket
-            classify();
+            const updated = [...state.buckets, { id: crypto.randomUUID(), name: suggestion.name, hint: suggestion.hint }];
+            setBucketSuggestions((s) => s.filter((x) => x.name !== suggestion.name));
+            saveBucketsAndReclassify(updated);
           }}
-          onRemoveThread={(id) =>
-            dispatch({ type: "REMOVE_THREAD", payload: id })
-          }
-          onMarkThreadRead={(id) =>
-            dispatch({ type: "MARK_THREAD_READ", payload: id })
-          }
+          onRemoveThread={(id) => dispatch({ type: "REMOVE_THREAD", payload: id })}
+          onMarkThreadRead={(id) => dispatch({ type: "MARK_THREAD_READ", payload: id })}
         />
       )}
 
       {showSettings && (
         <SettingsPage
           buckets={state.buckets}
-          bucketHints={state.bucketHints}
           onSaveBucket={handleSaveBucket}
           onDeleteBucket={handleDeleteBucket}
-          onAddBucket={handleAddBucketFromSettings}
+          onAddBucket={(name, hint) => handleAddBucket(name, hint)}
           onClose={() => setShowSettings(false)}
         />
       )}

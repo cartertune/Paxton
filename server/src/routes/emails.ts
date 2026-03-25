@@ -12,7 +12,7 @@ import {
 import {
   classifyThreads,
   classifyThreadsStreaming,
-  DEFAULT_HINTS,
+  DEFAULT_BUCKETS,
 } from "../services/classifier";
 import type { BucketDef } from "../services/classifier";
 import { getBuckets } from "../services/db";
@@ -26,17 +26,12 @@ export const emailsRouter = Router();
 
 async function getBucketDefs(token: string): Promise<BucketDef[]> {
   const record = await tokenStore.get(token);
-  if (!record) return Object.entries(DEFAULT_HINTS).map(([name, hint]) => ({ name, hint }));
+  if (!record) return DEFAULT_BUCKETS;
 
   const rows = await getBuckets(record.email);
-  if (rows.length === 0) {
-    return Object.entries(DEFAULT_HINTS).map(([name, hint]) => ({ name, hint }));
-  }
-  // Merge: custom buckets override defaults; defaults fill in missing hints
-  return rows.map((r) => ({
-    name: r.name,
-    hint: r.hint ?? DEFAULT_HINTS[r.name],
-  }));
+  if (rows.length === 0) return DEFAULT_BUCKETS;
+
+  return rows.map((r) => ({ id: r.id, name: r.name, hint: r.hint ?? undefined }));
 }
 
 const classifyLimiter = rateLimit({
@@ -286,7 +281,7 @@ const SuggestBucketsSchema = z.object({
         subject: z.string(),
         sender: z.string(),
         snippet: z.string(),
-        buckets: z.array(z.string()),
+        bucketIds: z.array(z.string()),
       }),
     )
     .max(500),
@@ -302,14 +297,23 @@ emailsRouter.post(
       res.status(400).json({ error: "Invalid request body" });
       return;
     }
-    const threads = parsed.data.threads.map(
-      ({ subject, sender, snippet, buckets }) => ({
-        subject,
-        sender,
-        snippet,
-        buckets,
-      }),
-    );
+
+    const token = getSessionToken(req);
+    if (!token) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const bucketDefs = await getBucketDefs(token);
+    const idToName = new Map(bucketDefs.map((b) => [b.id, b.name]));
+
+    const threads = parsed.data.threads.map(({ subject, sender, snippet, bucketIds }) => ({
+      subject,
+      sender,
+      snippet,
+      buckets: bucketIds.map((id) => idToName.get(id) ?? id),
+    }));
+
     try {
       const suggestions = await suggestBuckets(threads);
       res.json({ suggestions });

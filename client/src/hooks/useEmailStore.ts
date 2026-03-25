@@ -1,19 +1,13 @@
 import { useReducer } from 'react';
-import type { Thread } from '../types';
+import type { Thread, Bucket } from '../types';
 import { clearAllCaches } from '../cache';
-
-export const DEFAULT_BUCKETS = ['Important', 'Needs Reply', 'Can Wait', 'Newsletter', 'Auto-archive'];
-export const DEFAULT_BUCKET_COUNT = DEFAULT_BUCKETS.length;
 
 export type AppStatus = 'idle' | 'loading' | 'classifying' | 'ready' | 'error';
 
 export interface AppState {
   status: AppStatus;
   threads: Thread[];
-  buckets: string[];
-  bucketHints: Record<string, string>;
-  completedBatches: number;
-  totalBatches: number;
+  buckets: Bucket[];
   error: string | null;
   userEmail: string | null;
 }
@@ -22,9 +16,7 @@ export type Action =
   | { type: 'SET_STATUS'; payload: AppStatus }
   | { type: 'SET_THREADS'; payload: Thread[] }
   | { type: 'BATCH_RESOLVED'; payload: Thread[] }
-  | { type: 'SET_PROGRESS'; payload: { completedBatches: number; totalBatches: number } }
-  | { type: 'ADD_BUCKET'; payload: { name: string; hint?: string } }
-  | { type: 'SET_BUCKETS'; payload: Array<{ name: string; hint?: string }> }
+  | { type: 'SET_BUCKETS'; payload: Bucket[] }
   | { type: 'SET_ERROR'; payload: string }
   | { type: 'SET_USER'; payload: string }
   | { type: 'REMOVE_THREAD'; payload: string }
@@ -35,8 +27,6 @@ const STORAGE_KEY = 'paxton_state';
 
 interface PersistedState {
   threads: Thread[];
-  buckets: string[];
-  bucketHints: Record<string, string>;
   userEmail: string | null;
 }
 
@@ -54,8 +44,6 @@ function saveToStorage(state: AppState) {
   try {
     const persisted: PersistedState = {
       threads: state.threads,
-      buckets: state.buckets,
-      bucketHints: state.bucketHints,
       userEmail: state.userEmail,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
@@ -77,10 +65,7 @@ const stored = loadFromStorage();
 const initialState: AppState = {
   status: stored.threads && stored.threads.length > 0 ? 'ready' : 'idle',
   threads: stored.threads ?? [],
-  buckets: stored.buckets ?? [...DEFAULT_BUCKETS],
-  bucketHints: stored.bucketHints ?? {},
-  completedBatches: 0,
-  totalBatches: 0,
+  buckets: [],
   error: null,
   userEmail: stored.userEmail ?? null,
 };
@@ -108,27 +93,9 @@ function reducer(state: AppState, action: Action): AppState {
       next = { ...state, threads: updated };
       break;
     }
-    case 'SET_PROGRESS':
-      next = { ...state, completedBatches: action.payload.completedBatches, totalBatches: action.payload.totalBatches };
+    case 'SET_BUCKETS':
+      next = { ...state, buckets: action.payload };
       break;
-    case 'ADD_BUCKET': {
-      const { name, hint } = action.payload;
-      if (state.buckets.includes(name)) return state;
-      next = {
-        ...state,
-        buckets: [...state.buckets, name],
-        bucketHints: hint ? { ...state.bucketHints, [name]: hint } : state.bucketHints,
-      };
-      break;
-    }
-    case 'SET_BUCKETS': {
-      const buckets = action.payload.map((b) => b.name);
-      const bucketHints = Object.fromEntries(
-        action.payload.filter((b) => b.hint).map((b) => [b.name, b.hint!])
-      );
-      next = { ...state, buckets, bucketHints };
-      break;
-    }
     case 'SET_ERROR':
       next = { ...state, status: 'error', error: action.payload };
       break;
@@ -149,7 +116,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'RESET':
       clearStorage();
       clearAllCaches();
-      return { ...initialState, status: 'idle', threads: [], userEmail: null };
+      return { ...initialState, status: 'idle', threads: [], buckets: [], userEmail: null };
     default:
       return state;
   }

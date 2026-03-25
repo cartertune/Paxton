@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Thread, DraftResult, SummaryResult } from '../types';
+import type { Thread, Bucket, DraftResult, SummaryResult } from '../types';
 import { api } from '../api/client';
 import { getCachedBody, setCachedBody, getCachedDraft, setCachedDraft, getCachedSummary, setCachedSummary } from '../cache';
 import { getSenderStats } from '../utils';
@@ -7,6 +7,7 @@ import { getSenderStats } from '../utils';
 interface Props {
   thread: Thread;
   threads: Thread[]; // full list for prev/next navigation
+  buckets: Bucket[];
   onClose: () => void;
   onNavigate: (thread: Thread) => void;
   onArchive: (threadId: string) => void;
@@ -35,7 +36,9 @@ function bucketColor(name: string): string {
   return map[name] ?? 'bg-blue-50 text-blue-700 border-blue-100';
 }
 
-export default function ThreadDetailPanel({ thread, threads, onClose, onNavigate, onArchive, onMarkRead }: Props) {
+export default function ThreadDetailPanel({ thread, threads, buckets, onClose, onNavigate, onArchive, onMarkRead }: Props) {
+  const bucketMap = useMemo(() => new Map(buckets.map((b) => [b.id, b.name])), [buckets]);
+  const needsReplyId = useMemo(() => buckets.find((b) => b.name === 'Needs Reply')?.id, [buckets]);
   const [body, setBody] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -64,7 +67,7 @@ export default function ThreadDetailPanel({ thread, threads, onClose, onNavigate
     [thread.sender, threads]
   );
 
-  const isNeedsReply = thread.buckets.includes('Needs Reply');
+  const isNeedsReply = needsReplyId ? thread.bucketIds.includes(needsReplyId) : false;
 
   const handleGenerateDrafts = async () => {
     if (!body) return;
@@ -124,7 +127,7 @@ export default function ThreadDetailPanel({ thread, threads, onClose, onNavigate
     if (cachedSummary) setSummaryState({ status: 'done', result: cachedSummary });
 
     const generateDraftsIfNeeded = (bodyText: string) => {
-      if (thread.buckets.includes('Needs Reply') && bodyText && !getCachedDraft(thread.id)) {
+      if (isNeedsReply && bodyText && !getCachedDraft(thread.id)) {
         setDraftState({ status: 'loading' });
         api.getDrafts(thread.id, thread.subject, thread.sender, bodyText)
           .then((result) => {
@@ -280,14 +283,17 @@ export default function ThreadDetailPanel({ thread, threads, onClose, onNavigate
         <div className="px-6 pt-5 pb-4 border-b border-gray-100 shrink-0">
           {/* Bucket pills */}
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {thread.buckets.map((b) => (
-              <span
-                key={b}
-                className={`text-xs font-medium px-2.5 py-0.5 rounded-full border ${bucketColor(b)}`}
-              >
-                {b}
-              </span>
-            ))}
+            {thread.bucketIds.map((id) => {
+              const name = bucketMap.get(id) ?? id;
+              return (
+                <span
+                  key={id}
+                  className={`text-xs font-medium px-2.5 py-0.5 rounded-full border ${bucketColor(name)}`}
+                >
+                  {name}
+                </span>
+              );
+            })}
           </div>
 
           {/* Subject — large and prominent */}
@@ -379,16 +385,19 @@ export default function ThreadDetailPanel({ thread, threads, onClose, onNavigate
           <div className="px-6 py-5 border-b border-gray-100">
             <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Why these buckets?</h3>
             <div className="flex flex-col gap-3">
-              {thread.buckets.map((b) => (
-                <div key={b} className="flex gap-3 items-start">
-                  <span className={`mt-0.5 px-2.5 py-0.5 text-xs font-medium rounded-full border shrink-0 whitespace-nowrap ${bucketColor(b)}`}>
-                    {b}
+              {thread.bucketIds.map((id) => {
+                const name = bucketMap.get(id) ?? id;
+                return (
+                <div key={id} className="flex gap-3 items-start">
+                  <span className={`mt-0.5 px-2.5 py-0.5 text-xs font-medium rounded-full border shrink-0 whitespace-nowrap ${bucketColor(name)}`}>
+                    {name}
                   </span>
                   <p className="text-sm text-gray-500 leading-relaxed">
-                    {thread.bucketReasons[b] || 'No explanation available.'}
+                    {thread.bucketReasons[id] || 'No explanation available.'}
                   </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

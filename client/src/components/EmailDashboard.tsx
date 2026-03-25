@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { Thread, BucketSuggestion } from '../types';
+import type { Thread, Bucket, BucketSuggestion } from '../types';
 import EmailRow from './EmailRow';
 import AddBucketModal from './AddBucketModal';
 import ThreadDetailPanel from './ThreadDetailPanel';
@@ -38,7 +38,7 @@ function groupThreadsByDate(threads: Thread[]): { label: string; threads: Thread
 
 interface Props {
   threads: Thread[];
-  buckets: string[];
+  buckets: Bucket[];
   userEmail: string | null;
   onAddBucket: (name: string, hint?: string) => void;
   onSync: () => void;
@@ -77,22 +77,23 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showUserMenu]);
 
-  const resolvedTab = activeTab === ALL_TAB || buckets.includes(activeTab) ? activeTab : ALL_TAB;
+  const importantId = buckets.find((b) => b.name === 'Important')?.id;
+  const resolvedTab = activeTab === ALL_TAB || buckets.some((b) => b.id === activeTab) ? activeTab : ALL_TAB;
 
-  const countFor = (bucketName: string) =>
-    bucketName === ALL_TAB
+  const countFor = (bucketId: string) =>
+    bucketId === ALL_TAB
       ? threads.length
-      : threads.filter((t) => t.buckets.includes(bucketName)).length;
+      : threads.filter((t) => t.bucketIds.includes(bucketId)).length;
 
-  const unreadCountFor = (bucketName: string) =>
-    bucketName === ALL_TAB
+  const unreadCountFor = (bucketId: string) =>
+    bucketId === ALL_TAB
       ? threads.filter((t) => t.unread).length
-      : threads.filter((t) => t.buckets.includes(bucketName) && t.unread).length;
+      : threads.filter((t) => t.bucketIds.includes(bucketId) && t.unread).length;
 
   const activeThreads = (
     resolvedTab === ALL_TAB
       ? threads
-      : threads.filter((t) => t.buckets.includes(resolvedTab))
+      : threads.filter((t) => t.bucketIds.includes(resolvedTab))
   ).slice().sort((a, b) => b.timestamp - a.timestamp);
 
   const displayedThreads = searchQuery.trim()
@@ -290,22 +291,22 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
       {/* Horizontal tab bar */}
       <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm">
         <div className="flex items-center px-4 overflow-x-auto">
-          {[ALL_TAB, ...buckets].map((tab) => {
-            const count = countFor(tab);
-            const unreadCount = unreadCountFor(tab);
-            const isActive = tab === resolvedTab;
+          {[{ id: ALL_TAB, name: ALL_TAB }, ...buckets].map(({ id: tabId, name: tabName }) => {
+            const count = countFor(tabId);
+            const unreadCount = unreadCountFor(tabId);
+            const isActive = tabId === resolvedTab;
             return (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={tabId}
+                onClick={() => setActiveTab(tabId)}
                 className={`flex items-center gap-1.5 px-3 py-3 text-sm whitespace-nowrap border-b-2 transition-colors ${
                   isActive
                     ? 'border-blue-600 text-blue-600 font-medium'
                     : 'border-transparent text-stone-500 hover:text-stone-900 hover:border-stone-300'
                 }`}
               >
-                <span>{tab}</span>
-                {unreadCount > 0 && tab === 'Important' ? (
+                <span>{tabName}</span>
+                {unreadCount > 0 && tabId === importantId ? (
                   <span className="text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center bg-blue-500 text-white">
                     {unreadCount}
                   </span>
@@ -383,7 +384,7 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
 
       {showAddBucket && (
         <AddBucketModal
-          existingBuckets={buckets}
+          existingBuckets={buckets.map((b) => b.name)}
           onAdd={(name, hint) => handleAddBucket(name, hint)}
           onClose={() => setShowAddBucket(false)}
         />
@@ -393,6 +394,7 @@ export default function EmailDashboard({ threads, buckets, userEmail, onAddBucke
         <ThreadDetailPanel
           thread={selectedThread}
           threads={displayedThreads}
+          buckets={buckets}
           onClose={() => setSelectedThread(null)}
           onNavigate={(t) => setSelectedThread(t)}
           onArchive={(id) => { onRemoveThread(id); setSelectedThread(null); }}

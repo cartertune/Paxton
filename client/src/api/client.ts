@@ -1,5 +1,6 @@
 import type {
   Thread,
+  Bucket,
   DraftResult,
   SummaryResult,
   BucketSuggestion,
@@ -114,13 +115,13 @@ export const api = {
     return { threads: allThreads };
   },
 
-  getSettings(): Promise<{ buckets: Array<{ name: string; hint?: string }> }> {
+  getSettings(): Promise<{ buckets: Bucket[] }> {
     return apiFetch("/api/settings");
   },
 
   saveSettings(
-    buckets: Array<{ name: string; hint?: string }>,
-  ): Promise<{ ok: boolean }> {
+    buckets: Bucket[],
+  ): Promise<{ buckets: Bucket[] }> {
     return apiFetch("/api/settings", {
       method: "PUT",
       body: JSON.stringify(buckets),
@@ -190,7 +191,7 @@ export const api = {
           subject: t.subject,
           sender: t.sender,
           snippet: t.snippet,
-          buckets: t.buckets,
+          bucketIds: t.bucketIds,
         })),
       }),
     });

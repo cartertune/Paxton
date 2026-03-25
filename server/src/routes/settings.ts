@@ -9,6 +9,7 @@ export const settingsRouter = Router();
 const BucketsSchema = z
   .array(
     z.object({
+      id: z.string().optional(),
       name: z
         .string()
         .min(1)
@@ -36,7 +37,7 @@ settingsRouter.get("/", requireAuth, async (req, res) => {
   try {
     const rows = await getBuckets(record.email);
     res.json({
-      buckets: rows.map((r) => ({ name: r.name, hint: r.hint ?? undefined })),
+      buckets: rows.map((r) => ({ id: r.id, name: r.name, hint: r.hint ?? undefined })),
     });
   } catch (err) {
     console.error("Failed to fetch buckets:", err);
@@ -64,8 +65,8 @@ settingsRouter.put("/", requireAuth, async (req, res) => {
   }
 
   try {
-    await saveBuckets(record.email, parsed.data);
-    res.json({ ok: true });
+    const rows = await saveBuckets(record.email, parsed.data);
+    res.json({ buckets: rows.map((r) => ({ id: r.id, name: r.name, hint: r.hint ?? undefined })) });
   } catch (err) {
     console.error("Failed to save buckets:", err);
     res.status(500).json({ error: "Failed to save settings" });

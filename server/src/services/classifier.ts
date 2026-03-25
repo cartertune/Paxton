@@ -28,15 +28,21 @@ const client = new Anthropic();
 
 const BATCH_SIZE = 10;
 
-export const DEFAULT_HINTS: Record<string, string> = {
-  Important: 'direct messages, requests requiring action, time-sensitive items from real people',
-  'Needs Reply': 'emails containing a direct question or explicit request for a response',
-  'Can Wait': 'FYI updates, non-urgent notifications, low-priority info',
-  Newsletter: 'curated digests, blog subscriptions, Substack posts, weekly roundups',
-  'Auto-archive': 'promotions, marketing, deals, shipping notifications, automated receipts',
-};
+export const DEFAULT_BUCKETS: Array<{ id: string; name: string; hint: string }> = [
+  { id: 'default-important',    name: 'Important',    hint: 'direct messages, requests requiring action, time-sensitive items from real people' },
+  { id: 'default-needs-reply',  name: 'Needs Reply',  hint: 'emails containing a direct question or explicit request for a response' },
+  { id: 'default-can-wait',     name: 'Can Wait',     hint: 'FYI updates, non-urgent notifications, low-priority info' },
+  { id: 'default-newsletter',   name: 'Newsletter',   hint: 'curated digests, blog subscriptions, Substack posts, weekly roundups' },
+  { id: 'default-auto-archive', name: 'Auto-archive', hint: 'promotions, marketing, deals, shipping notifications, automated receipts' },
+];
+
+// Keep for backward compat within classifier (hint lookup by name)
+export const DEFAULT_HINTS: Record<string, string> = Object.fromEntries(
+  DEFAULT_BUCKETS.map((b) => [b.name, b.hint]),
+);
 
 export interface BucketDef {
+  id: string;
   name: string;
   hint?: string;
 }
@@ -57,8 +63,8 @@ export interface ClassifiedThread {
   snippet: string;
   timestamp: number;
   unread: boolean;
-  buckets: string[];
-  bucketReasons: Record<string, string>;
+  bucketIds: string[];
+  bucketReasons: Record<string, string>; // keyed by bucket ID
 }
 
 function buildBucketDescriptions(bucketDefs: BucketDef[]): string {
@@ -70,13 +76,17 @@ function buildBucketDescriptions(bucketDefs: BucketDef[]): string {
     .join('\n');
 }
 
-// If a thread is in Auto-archive, it should not appear in any other bucket
-function enforceAutoArchiveExclusivity<T extends { buckets: string[]; bucketReasons: Record<string, string> }>(result: T): T {
-  if (result.buckets.some((b) => b.toLowerCase() === 'auto-archive')) {
-    const kept = result.buckets.filter((b) => b.toLowerCase() === 'auto-archive');
-    const keptReasons: Record<string, string> = {};
-    for (const b of kept) keptReasons[b] = result.bucketReasons[b] ?? '';
-    return { ...result, buckets: kept, bucketReasons: keptReasons };
+// If a thread is in Auto-archive, it should not appear in any other bucket (operates on IDs)
+function enforceAutoArchiveExclusivity(
+  result: { bucketIds: string[]; bucketReasons: Record<string, string> },
+  autoArchiveId: string | undefined,
+): { bucketIds: string[]; bucketReasons: Record<string, string> } {
+  if (!autoArchiveId) return result;
+  if (result.bucketIds.includes(autoArchiveId)) {
+    return {
+      bucketIds: [autoArchiveId],
+      bucketReasons: { [autoArchiveId]: result.bucketReasons[autoArchiveId] ?? '' },
+    };
   }
   return result;
 }
@@ -95,8 +105,10 @@ function getSignals(thread: RawThread): string {
 async function classifyBatch(
   batch: RawThread[],
   bucketDefs: BucketDef[],
-): Promise<Array<{ id: string; buckets: string[]; bucketReasons: Record<string, string> }>> {
+): Promise<Array<{ id: string; bucketIds: string[]; bucketReasons: Record<string, string> }>> {
   const bucketNames = bucketDefs.map((b) => b.name);
+  const nameToId = new Map(bucketDefs.map((b) => [b.name, b.id]));
+  const autoArchiveId = bucketDefs.find((b) => b.name.toLowerCase() === 'auto-archive')?.id;
   const bucketDescriptions = buildBucketDescriptions(bucketDefs);
 
   const threadLines = batch
@@ -107,21 +119,26 @@ async function classifyBatch(
     })
     .join('\n');
 
-  const systemPrompt = `You are an email triage assistant. Classify each email thread into one or more of the provided buckets.
+  const systemPrompt = `
+   You are an email triage assistant. Classify each email thread into one or more of the provided buckets.
 
-Buckets:
-${bucketDescriptions}
+  <buckets>
+    ${bucketDescriptions}
+  </buckets>
 
-Rules:
-- An email can belong to multiple buckets if it genuinely fits more than one.
-- Only include "Important" if you are highly confident this is a direct, personal email requiring action from a real person.
-- Signals in brackets (has_unsubscribe, from_noreply, is_reply_or_fwd) are strong classification hints — use them.
+  <rules>
+    - An email can belong to multiple buckets if it genuinely fits more than one.
+    - Only include "Important" if you are highly confident this is a direct, personal email requiring action from a real person.
+    - Signals in brackets (has_unsubscribe, from_noreply, is_reply_or_fwd) are strong classification hints — use them.
+  </rules>
 
-For each email:
-1. First write a brief "reasoning" capturing your overall read of the email.
-2. Then assign "buckets" (array of matching bucket names).
-3. Then write "bucketReasons" — one short sentence per assigned bucket explaining why.`;
-
+  <format>
+    For each email:
+    - First write a brief "reasoning" capturing your overall read of the email.
+    - Then assign "buckets" (array of matching bucket names).
+    - Then write "bucketReasons" — one short sentence per assigned bucket explaining why.
+  </format>
+`;
   const userPrompt = `Classify these email threads into buckets: [${bucketNames.join(', ')}]
 
 Threads:
@@ -166,10 +183,17 @@ ${threadLines}`;
   if (!toolUse || toolUse.type !== 'tool_use') throw new Error('No tool call in response');
 
   const parsed = BatchResultSchema.parse((toolUse.input as { results: unknown }).results);
-  // Strip the hidden reasoning field — client never sees it
-  return parsed
-    .map(({ reasoning: _reasoning, ...rest }) => rest)
-    .map(enforceAutoArchiveExclusivity);
+  // Translate bucket names → IDs and strip hidden reasoning field
+  return parsed.map(({ id: threadId, reasoning: _reasoning, buckets: bucketNames_, bucketReasons: nameReasons }) => {
+    const bucketIds = bucketNames_.map((n) => nameToId.get(n) ?? n);
+    const bucketReasons: Record<string, string> = {};
+    for (const name of bucketNames_) {
+      const bid = nameToId.get(name) ?? name;
+      bucketReasons[bid] = nameReasons[name] ?? '';
+    }
+    const result = enforceAutoArchiveExclusivity({ bucketIds, bucketReasons }, autoArchiveId);
+    return { id: threadId, ...result };
+  });
 }
 
 export async function classifyThreads(
@@ -187,24 +211,22 @@ export async function classifyThreads(
     batches.map((batch) => classifyBatch(batch, bucketDefs)),
   );
 
-  const bucketMap = new Map<string, { buckets: string[]; bucketReasons: Record<string, string> }>();
+  const fallback = { bucketIds: [bucketDefs[0].id], bucketReasons: { [bucketDefs[0].id]: 'Classification unavailable' } };
+  const bucketMap = new Map<string, { bucketIds: string[]; bucketReasons: Record<string, string> }>();
 
   settledResults.forEach((result, i) => {
     if (result.status === 'fulfilled') {
       for (const item of result.value) {
-        bucketMap.set(item.id, { buckets: item.buckets, bucketReasons: item.bucketReasons });
+        bucketMap.set(item.id, { bucketIds: item.bucketIds, bucketReasons: item.bucketReasons });
       }
     } else {
       for (const t of batches[i]) {
-        bucketMap.set(t.id, { buckets: [bucketDefs[0].name], bucketReasons: { [bucketDefs[0].name]: 'Classification unavailable' } });
+        bucketMap.set(t.id, fallback);
       }
     }
   });
 
-  return threads.map((t) => {
-    const result = bucketMap.get(t.id) ?? { buckets: [bucketDefs[0].name], bucketReasons: { [bucketDefs[0].name]: 'Classification unavailable' } };
-    return { ...t, ...result };
-  });
+  return threads.map((t) => ({ ...t, ...(bucketMap.get(t.id) ?? fallback) }));
 }
 
 // Streaming variant: classifies batches and calls onBatch as each one resolves
@@ -223,20 +245,19 @@ export async function classifyThreadsStreaming(
   const totalBatches = batches.length;
   let completedBatches = 0;
 
+  const fallback = { bucketIds: [bucketDefs[0].id], bucketReasons: { [bucketDefs[0].id]: 'Classification unavailable' } };
+
   await Promise.allSettled(
     batches.map(async (batch) => {
-      let items: Array<{ id: string; buckets: string[]; bucketReasons: Record<string, string> }>;
+      let items: Array<{ id: string; bucketIds: string[]; bucketReasons: Record<string, string> }>;
       try {
         items = await classifyBatch(batch, bucketDefs);
       } catch {
-        items = batch.map((t) => ({ id: t.id, buckets: [bucketDefs[0].name], bucketReasons: { [bucketDefs[0].name]: 'Classification unavailable' } }));
+        items = batch.map((t) => ({ id: t.id, ...fallback }));
       }
 
       const batchMap = new Map(items.map((item) => [item.id, item]));
-      const classifiedBatch: ClassifiedThread[] = batch.map((t) => {
-        const r = batchMap.get(t.id) ?? { buckets: [bucketDefs[0].name], bucketReasons: { [bucketDefs[0].name]: 'Classification unavailable' } };
-        return { ...t, ...r };
-      });
+      const classifiedBatch: ClassifiedThread[] = batch.map((t) => ({ ...t, ...(batchMap.get(t.id) ?? fallback) }));
 
       completedBatches++;
       onBatch(classifiedBatch, completedBatches, totalBatches);

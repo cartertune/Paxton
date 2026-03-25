@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import Database from "better-sqlite3";
 import path from "path";
+import { randomUUID } from "crypto";
 
 // Determine which database to use based on DATABASE_URL environment variable
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -31,12 +32,17 @@ async function initSchema() {
     // PostgreSQL schema
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_buckets (
+        id TEXT NOT NULL DEFAULT gen_random_uuid(),
         email TEXT NOT NULL,
         name TEXT NOT NULL,
         hint TEXT,
         sort_order INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (email, name)
       )
+    `);
+    // Migration: add id column if missing (existing tables)
+    await pool.query(`
+      ALTER TABLE user_buckets ADD COLUMN IF NOT EXISTS id TEXT NOT NULL DEFAULT gen_random_uuid()
     `);
 
     await pool.query(`
@@ -50,6 +56,7 @@ async function initSchema() {
     // SQLite schema
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS user_buckets (
+        id TEXT NOT NULL,
         email TEXT NOT NULL,
         name TEXT NOT NULL,
         hint TEXT,
@@ -57,6 +64,12 @@ async function initSchema() {
         PRIMARY KEY (email, name)
       )
     `);
+    // Migration: add id column if missing (existing tables)
+    try {
+      sqlite.exec(`ALTER TABLE user_buckets ADD COLUMN id TEXT NOT NULL DEFAULT ''`);
+    } catch {
+      // Column already exists — ignore
+    }
 
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS token_store (
@@ -72,6 +85,7 @@ async function initSchema() {
 initSchema().catch(console.error);
 
 export interface BucketRow {
+  id: string;
   email: string;
   name: string;
   hint: string | null;
@@ -97,26 +111,25 @@ export async function getBuckets(email: string): Promise<BucketRow[]> {
 
 export async function saveBuckets(
   email: string,
-  buckets: Array<{ name: string; hint?: string }>,
-): Promise<void> {
+  buckets: Array<{ id?: string; name: string; hint?: string }>,
+): Promise<BucketRow[]> {
   if (usePostgres && pool) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
 
-      // Upsert each bucket
       for (let i = 0; i < buckets.length; i++) {
         const bucket = buckets[i];
+        const id = bucket.id ?? randomUUID();
         await client.query(
-          `INSERT INTO user_buckets (email, name, hint, sort_order)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO user_buckets (id, email, name, hint, sort_order)
+           VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (email, name)
            DO UPDATE SET hint = EXCLUDED.hint, sort_order = EXCLUDED.sort_order`,
-          [email, bucket.name, bucket.hint ?? null, i],
+          [id, email, bucket.name, bucket.hint ?? null, i],
         );
       }
 
-      // Delete buckets not in the list
       const bucketNames = buckets.map((b) => b.name);
       if (bucketNames.length > 0) {
         await client.query(
@@ -126,9 +139,7 @@ export async function saveBuckets(
           [email, ...bucketNames],
         );
       } else {
-        await client.query("DELETE FROM user_buckets WHERE email = $1", [
-          email,
-        ]);
+        await client.query("DELETE FROM user_buckets WHERE email = $1", [email]);
       }
 
       await client.query("COMMIT");
@@ -140,18 +151,25 @@ export async function saveBuckets(
     }
   } else if (sqlite) {
     const upsert = sqlite.prepare(
-      "INSERT INTO user_buckets (email, name, hint, sort_order) VALUES (?, ?, ?, ?) ON CONFLICT(email, name) DO UPDATE SET hint = excluded.hint, sort_order = excluded.sort_order",
+      `INSERT INTO user_buckets (id, email, name, hint, sort_order)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(email, name) DO UPDATE SET hint = excluded.hint, sort_order = excluded.sort_order`,
     );
     const deleteOld = sqlite.prepare(
       "DELETE FROM user_buckets WHERE email = ? AND name NOT IN (SELECT value FROM json_each(?))",
     );
 
     const tx = sqlite.transaction(() => {
-      buckets.forEach((b, i) => upsert.run(email, b.name, b.hint ?? null, i));
+      buckets.forEach((b, i) => {
+        const id = b.id ?? randomUUID();
+        upsert.run(id, email, b.name, b.hint ?? null, i);
+      });
       deleteOld.run(email, JSON.stringify(buckets.map((b) => b.name)));
     });
     tx();
   }
+
+  return getBuckets(email);
 }
 
 export async function deleteBucket(email: string, name: string): Promise<void> {
