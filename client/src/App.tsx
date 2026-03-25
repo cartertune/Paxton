@@ -304,6 +304,8 @@ export default function App() {
             setBucketSuggestions((s) =>
               s.filter((x) => x.name !== suggestion.name),
             );
+            // Reclassify all emails with the new bucket
+            classify(updatedBuckets, updatedHints);
           }}
           onRemoveThread={(id) =>
             dispatch({ type: "REMOVE_THREAD", payload: id })
