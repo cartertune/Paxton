@@ -57,14 +57,64 @@ export const api = {
     return apiFetch("/api/auth/logout", { method: "POST" });
   },
 
-  classifyAll(
+  async classifyAll(
     buckets: string[],
     bucketHints: Record<string, string>,
+    onProgress?: (pct: number) => void,
   ): Promise<{ threads: Thread[] }> {
-    return apiFetch("/api/emails/classify", {
+    const headers: HeadersInit = { "Content-Type": "application/json" };
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+
+    const res = await fetch(`${BASE}/api/emails/classify/stream`, {
       method: "POST",
+      headers,
       body: JSON.stringify({ buckets, bucketHints }),
     });
+
+    if (!res.ok) {
+      if (res.status === 401) { window.location.href = `${BASE}/api/auth/google`; }
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${text}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("Response body is not readable");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const allThreads: Thread[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const payload = JSON.parse(line.slice(6)) as {
+            threads?: Thread[];
+            completedBatches?: number;
+            totalBatches?: number;
+            done?: boolean;
+            error?: string;
+          };
+          if (payload.error) throw new Error(payload.error);
+          if (payload.threads) allThreads.push(...payload.threads);
+          if (payload.completedBatches !== undefined && payload.totalBatches && payload.totalBatches > 0) {
+            onProgress?.(Math.round((payload.completedBatches / payload.totalBatches) * 100));
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message !== "Malformed SSE") throw e;
+        }
+      }
+    }
+
+    return { threads: allThreads };
   },
 
   getSettings(): Promise<{ buckets: Array<{ name: string; hint?: string }> }> {

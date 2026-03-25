@@ -14,6 +14,7 @@ const VERSION =
 export default function App() {
   const [state, dispatch] = useEmailStore();
   const classifyingRef = useRef(false);
+  const [classifyProgress, setClassifyProgress] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(
     // If we have cached threads, assume they were synced recently (we don't know exactly when)
@@ -123,10 +124,11 @@ export default function App() {
   ) {
     if (classifyingRef.current) return;
     classifyingRef.current = true;
+    setClassifyProgress(0);
     dispatch({ type: "SET_STATUS", payload: "classifying" });
 
     try {
-      const { threads } = await api.classifyAll(buckets, bucketHints);
+      const { threads } = await api.classifyAll(buckets, bucketHints, setClassifyProgress);
       dispatch({ type: "BATCH_RESOLVED", payload: threads });
       dispatch({ type: "SET_STATUS", payload: "ready" });
       setLastSyncedAt(new Date());
@@ -265,6 +267,7 @@ export default function App() {
           onLogout={handleLogout}
           onOpenSettings={() => setShowSettings(true)}
           isClassifying={isClassifying}
+          classifyProgress={classifyProgress}
           lastSyncedAt={lastSyncedAt}
           bucketSuggestions={bucketSuggestions}
           onDismissSuggestion={(name) =>
