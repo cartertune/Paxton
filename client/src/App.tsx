@@ -3,7 +3,6 @@ import { api, setAuthToken, getAuthToken } from "./api/client";
 import { useEmailStore } from "./hooks/useEmailStore";
 import LoginPage from "./components/LoginPage";
 import EmailDashboard from "./components/EmailDashboard";
-import ErrorBanner from "./components/ErrorBanner";
 import SettingsPage from "./components/SettingsPage";
 import type { Bucket, BucketSuggestion } from "./types";
 
@@ -183,17 +182,46 @@ export default function App() {
     );
   }
 
+  if (state.status === "error" && state.error) {
+    const isPermissionError = state.error.startsWith("Gmail access was denied");
+    return (
+      <div className="flex flex-col h-screen bg-stone-50 items-center justify-center px-6">
+        <div className="max-w-md w-full bg-white border border-stone-200 rounded-2xl p-8 shadow-sm text-center">
+          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v4M12 16h.01" />
+            </svg>
+          </div>
+          <h2 className="text-base font-semibold text-stone-900 mb-2">
+            {isPermissionError ? "Access not authorized" : "Something went wrong"}
+          </h2>
+          <p className="text-sm text-stone-500 leading-relaxed mb-6">{state.error}</p>
+          <button
+            onClick={handleLogout}
+            className="w-full px-4 py-2 text-sm font-medium text-white bg-stone-800 hover:bg-stone-900 rounded-lg transition-colors"
+          >
+            Sign out and try a different account
+          </button>
+          {!isPermissionError && (
+            <button
+              onClick={() => dispatch({ type: "SET_STATUS", payload: "ready" })}
+              className="mt-2 w-full px-4 py-2 text-sm text-stone-500 hover:text-stone-700 transition-colors"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
+        <div className="mt-6 text-xs text-stone-400">v{VERSION}</div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="fixed bottom-4 right-4 text-xs text-stone-400 pointer-events-none">
         v{VERSION}
       </div>
-      {state.status === "error" && state.error && (
-        <ErrorBanner
-          message={state.error}
-          onDismiss={() => dispatch({ type: "SET_STATUS", payload: "ready" })}
-        />
-      )}
 
       {(state.status === "ready" || isClassifying || state.threads.length > 0) && (
         <EmailDashboard
