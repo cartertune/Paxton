@@ -63,8 +63,8 @@ export default function ThreadDetailPanel({ thread, threads, buckets, onClose, o
   const [markingRead, setMarkingRead] = useState(false);
 
   const senderStats = useMemo(
-    () => getSenderStats(thread.sender, threads),
-    [thread.sender, threads]
+    () => getSenderStats(thread.sender, threads, bucketMap, needsReplyId),
+    [thread.sender, threads, bucketMap, needsReplyId]
   );
 
   const isNeedsReply = needsReplyId ? thread.bucketIds.includes(needsReplyId) : false;
