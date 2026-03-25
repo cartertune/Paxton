@@ -42,6 +42,9 @@ authRouter.get("/callback", async (req, res) => {
     const { data } = await oauth2.userinfo.get();
     const email = data.email ?? "unknown";
 
+    console.log("[AUTH] Session ID:", req.session.id);
+    console.log("[AUTH] Setting token for email:", email);
+
     await tokenStore.set(req.session.id, { tokens, email });
 
     // Save session explicitly before redirecting so the cookie is committed
@@ -51,6 +54,10 @@ authRouter.get("/callback", async (req, res) => {
         res.status(500).send("Session error");
         return;
       }
+      console.log(
+        "[AUTH] Session saved, redirecting to:",
+        process.env.CLIENT_ORIGIN,
+      );
       res.redirect(process.env.CLIENT_ORIGIN ?? "http://localhost:5173");
     });
   } catch (err) {
@@ -60,7 +67,12 @@ authRouter.get("/callback", async (req, res) => {
 });
 
 authRouter.get("/me", async (req, res) => {
+  console.log("[AUTH /me] Session ID:", req.session.id);
+  console.log("[AUTH /me] Cookies:", req.headers.cookie);
+
   const record = await tokenStore.get(req.session.id);
+  console.log("[AUTH /me] Token found:", !!record);
+
   if (!record) {
     res.status(401).json({ error: "Unauthorized" });
     return;
