@@ -24,9 +24,9 @@ export function getAuthToken(): string | null {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {
+  const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...init?.headers,
+    ...(init?.headers as Record<string, string>),
   };
 
   // Add Bearer token if available
@@ -59,7 +59,7 @@ async function classifyStreamReal(
   bucketHints: Record<string, string>,
   callbacks: StreamCallbacks,
 ): Promise<void> {
-  const headers: Record<string, string> = {
+  const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
 
