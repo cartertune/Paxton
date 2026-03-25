@@ -58,8 +58,6 @@ export const api = {
   },
 
   async classifyAll(
-    buckets: string[],
-    bucketHints: Record<string, string>,
     onProgress?: (pct: number) => void,
   ): Promise<{ threads: Thread[] }> {
     const headers: HeadersInit = { "Content-Type": "application/json" };
@@ -68,7 +66,6 @@ export const api = {
     const res = await fetch(`${BASE}/api/emails/classify/stream`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ buckets, bucketHints }),
     });
 
     if (!res.ok) {
@@ -140,12 +137,10 @@ export const api = {
 
   classifyIncremental(
     threadIds: string[],
-    buckets: string[],
-    bucketHints: Record<string, string>,
   ): Promise<{ threads: Thread[] }> {
     return apiFetch("/api/emails/classify/incremental", {
       method: "POST",
-      body: JSON.stringify({ threadIds, buckets, bucketHints }),
+      body: JSON.stringify({ threadIds }),
     });
   },
 

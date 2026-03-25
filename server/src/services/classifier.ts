@@ -28,7 +28,7 @@ const client = new Anthropic();
 
 const BATCH_SIZE = 10;
 
-const DEFAULT_HINTS: Record<string, string> = {
+export const DEFAULT_HINTS: Record<string, string> = {
   Important: 'direct messages, requests requiring action, time-sensitive items from real people',
   'Needs Reply': 'emails containing a direct question or explicit request for a response',
   'Can Wait': 'FYI updates, non-urgent notifications, low-priority info',

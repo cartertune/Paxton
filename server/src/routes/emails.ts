@@ -12,14 +12,32 @@ import {
 import {
   classifyThreads,
   classifyThreadsStreaming,
+  DEFAULT_HINTS,
 } from "../services/classifier";
 import type { BucketDef } from "../services/classifier";
+import { getBuckets } from "../services/db";
+import { tokenStore } from "../services/tokenStore";
 import { generateDraftReplies } from "../services/drafts";
 import { generateSummary } from "../services/summary";
 import { suggestBuckets } from "../services/suggestions";
 import { z } from "zod";
 
 export const emailsRouter = Router();
+
+async function getBucketDefs(token: string): Promise<BucketDef[]> {
+  const record = await tokenStore.get(token);
+  if (!record) return Object.entries(DEFAULT_HINTS).map(([name, hint]) => ({ name, hint }));
+
+  const rows = await getBuckets(record.email);
+  if (rows.length === 0) {
+    return Object.entries(DEFAULT_HINTS).map(([name, hint]) => ({ name, hint }));
+  }
+  // Merge: custom buckets override defaults; defaults fill in missing hints
+  return rows.map((r) => ({
+    name: r.name,
+    hint: r.hint ?? DEFAULT_HINTS[r.name],
+  }));
+}
 
 const classifyLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -41,38 +59,12 @@ const pollLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const ClassifyBodySchema = z.object({
-  buckets: z
-    .array(
-      z
-        .string()
-        .min(1)
-        .max(50)
-        .regex(/^[a-zA-Z0-9 _&'(),.!?-]+$/),
-    )
-    .min(1)
-    .max(20),
-  bucketHints: z.record(z.string(), z.string().max(200)).optional(),
-});
-
 // SSE streaming endpoint — emits batch results as they resolve
 emailsRouter.post(
   "/classify/stream",
   classifyLimiter,
   requireAuth,
   async (req, res) => {
-    const parsed = ClassifyBodySchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid request body" });
-      return;
-    }
-
-    const { buckets, bucketHints = {} } = parsed.data;
-    const bucketDefs: BucketDef[] = buckets.map((name) => ({
-      name,
-      hint: bucketHints[name],
-    }));
-
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -89,7 +81,10 @@ emailsRouter.post(
         res.end();
         return;
       }
-      const threads = await fetchThreads(token);
+      const [threads, bucketDefs] = await Promise.all([
+        fetchThreads(token),
+        getBucketDefs(token),
+      ]);
 
       if (threads.length === 0) {
         send({ done: true, threads: [] });
@@ -132,17 +127,6 @@ emailsRouter.get("/threads/ids", pollLimiter, requireAuth, async (req, res) => {
 
 const IncrementalClassifySchema = z.object({
   threadIds: z.array(z.string().min(1)).min(1).max(50),
-  buckets: z
-    .array(
-      z
-        .string()
-        .min(1)
-        .max(50)
-        .regex(/^[a-zA-Z0-9 _&'(),.!?-]+$/),
-    )
-    .min(1)
-    .max(20),
-  bucketHints: z.record(z.string(), z.string().max(200)).optional(),
 });
 
 emailsRouter.post(
@@ -156,11 +140,7 @@ emailsRouter.post(
       return;
     }
 
-    const { threadIds, buckets, bucketHints = {} } = parsed.data;
-    const bucketDefs: BucketDef[] = buckets.map((name) => ({
-      name,
-      hint: bucketHints[name],
-    }));
+    const { threadIds } = parsed.data;
 
     try {
       const token = getSessionToken(req);
@@ -168,7 +148,10 @@ emailsRouter.post(
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
-      const threads = await fetchThreadsByIds(token, threadIds);
+      const [threads, bucketDefs] = await Promise.all([
+        fetchThreadsByIds(token, threadIds),
+        getBucketDefs(token),
+      ]);
       if (threads.length === 0) {
         res.json({ threads: [] });
         return;

@@ -73,7 +73,7 @@ export default function App() {
         }
 
         dispatch({ type: "SET_STATUS", payload: "loading" });
-        await classify(state.buckets, state.bucketHints);
+        await classify();
       } catch {
         // Not logged in — stay idle
         dispatch({ type: "SET_STATUS", payload: "idle" });
@@ -99,11 +99,7 @@ export default function App() {
         const newIds = ids.filter((id) => !knownIds.has(id));
         if (newIds.length === 0) return;
 
-        const { threads } = await api.classifyIncremental(
-          newIds,
-          stateRef.current.buckets,
-          stateRef.current.bucketHints,
-        );
+        const { threads } = await api.classifyIncremental(newIds);
         if (threads.length > 0) {
           dispatch({ type: "BATCH_RESOLVED", payload: threads });
           setLastSyncedAt(new Date());
@@ -118,17 +114,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function classify(
-    buckets: string[],
-    bucketHints: Record<string, string>,
-  ) {
+  async function classify() {
     if (classifyingRef.current) return;
     classifyingRef.current = true;
     setClassifyProgress(0);
     dispatch({ type: "SET_STATUS", payload: "classifying" });
 
     try {
-      const { threads } = await api.classifyAll(buckets, bucketHints, setClassifyProgress);
+      const { threads } = await api.classifyAll(setClassifyProgress);
       dispatch({ type: "BATCH_RESOLVED", payload: threads });
       dispatch({ type: "SET_STATUS", payload: "ready" });
       setLastSyncedAt(new Date());
@@ -149,8 +142,6 @@ export default function App() {
 
   const handleAddBucket = (name: string, hint?: string) => {
     dispatch({ type: "ADD_BUCKET", payload: { name, hint } });
-    // Reclassify with the new bucket included — build updated lists directly
-    // since state hasn't re-rendered yet
     const updatedBuckets = state.buckets.includes(name)
       ? state.buckets
       : [...state.buckets, name];
@@ -162,12 +153,12 @@ export default function App() {
       hint: updatedHints[b],
     }));
     api.saveSettings(payload).catch(() => {});
-    classify(updatedBuckets, updatedHints);
+    classify();
   };
 
   const handleSync = () => {
     dispatch({ type: "SET_THREADS", payload: [] });
-    classify(state.buckets, state.bucketHints);
+    classify();
   };
 
   const handleLogout = async () => {
@@ -194,7 +185,7 @@ export default function App() {
       // Non-fatal
     }
     dispatch({ type: "SET_BUCKETS", payload });
-    classify(updatedBuckets, updatedHints);
+    classify();
   };
 
   const handleDeleteBucket = async (name: string) => {
@@ -211,7 +202,7 @@ export default function App() {
       // Non-fatal
     }
     dispatch({ type: "SET_BUCKETS", payload });
-    classify(updatedBuckets, updatedHints);
+    classify();
   };
 
   const handleAddBucketFromSettings = (name: string, hint: string) => {
@@ -223,7 +214,7 @@ export default function App() {
     }));
     api.saveSettings(payload).catch(() => {});
     dispatch({ type: "ADD_BUCKET", payload: { name, hint } });
-    classify(updatedBuckets, updatedHints);
+    classify();
   };
 
   const isClassifying =
@@ -293,7 +284,7 @@ export default function App() {
               s.filter((x) => x.name !== suggestion.name),
             );
             // Reclassify all emails with the new bucket
-            classify(updatedBuckets, updatedHints);
+            classify();
           }}
           onRemoveThread={(id) =>
             dispatch({ type: "REMOVE_THREAD", payload: id })
