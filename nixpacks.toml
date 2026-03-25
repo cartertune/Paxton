@@ -3,18 +3,18 @@ nixPkgs = ["nodejs_20"]
 
 [phases.install]
 cmds = [
-  "npm ci --include=dev",
-  "cd server && npm ci --include=dev",
-  "cd client && npm ci --include=dev"
+  "cd server && npm ci",
+  "cd client && npm ci"
 ]
 
 [phases.build]
 cmds = [
-  "npm run build"
+  "cd server && npm run build",
+  "cd client && npm run build"
 ]
 
 [start]
-cmd = "npm start"
+cmd = "node server/dist/index.js"
 
 [variables]
 NODE_ENV = "production"
