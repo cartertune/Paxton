@@ -22,6 +22,11 @@ const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 const IS_PROD = process.env.NODE_ENV === "production";
 
+// Trust Railway proxy
+if (IS_PROD) {
+  app.set("trust proxy", 1);
+}
+
 app.use(
   cors({
     origin: process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
@@ -35,13 +40,12 @@ app.use(
   session({
     secret: process.env.SESSION_SECRET!,
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
     cookie: {
       httpOnly: true,
       sameSite: IS_PROD ? "none" : "lax",
       secure: IS_PROD,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      domain: IS_PROD ? undefined : undefined, // Let browser handle domain
     },
   }),
 );
