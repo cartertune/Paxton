@@ -1,3 +1,25 @@
+/**
+ * Email classifier — uses Claude to sort inbox threads into user-defined buckets.
+ *
+ * Flow:
+ *   1. Threads are split into batches of BATCH_SIZE (10) to keep prompts within token limits.
+ *   2. Each batch is sent to Claude as a single prompt. Claude is forced to respond via
+ *      tool-use (structured output), which constrains bucket names to an enum and
+ *      guarantees valid JSON back — no fragile string parsing.
+ *   3. Claude produces a hidden "reasoning" field (chain-of-thought) per email, then
+ *      assigns one or more bucket names plus a short per-bucket justification. The
+ *      reasoning field is stripped before results are returned to the client.
+ *   4. Cheap string-derived signals (has_unsubscribe, from_noreply, is_reply_or_fwd)
+ *      are appended to each thread line so Claude doesn't burn reasoning budget on
+ *      obvious cases.
+ *   5. "Auto-archive" is exclusive: if a thread lands there, all other buckets are dropped.
+ *   6. Batches are classified in parallel (Promise.allSettled). Failed batches fall back
+ *      to the first bucket rather than crashing the whole response.
+ *   7. classifyThreadsStreaming fires an onBatch callback as each batch resolves,
+ *      enabling SSE progress updates to the client (used by /classify/stream).
+ *      classifyThreads is the non-streaming variant used by /classify/incremental.
+ */
+
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import type { RawThread } from './gmail';

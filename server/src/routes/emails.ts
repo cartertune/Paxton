@@ -55,40 +55,6 @@ const ClassifyBodySchema = z.object({
   bucketHints: z.record(z.string(), z.string().max(200)).optional(),
 });
 
-// Non-streaming endpoint (kept for compatibility)
-emailsRouter.post(
-  "/classify",
-  classifyLimiter,
-  requireAuth,
-  async (req, res) => {
-    const parsed = ClassifyBodySchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid request body" });
-      return;
-    }
-
-    const { buckets, bucketHints = {} } = parsed.data;
-    const bucketDefs: BucketDef[] = buckets.map((name) => ({
-      name,
-      hint: bucketHints[name],
-    }));
-
-    try {
-      const token = getSessionToken(req);
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const threads = await fetchThreads(token);
-      const classified = await classifyThreads(threads, bucketDefs);
-      res.json({ threads: classified });
-    } catch (err) {
-      console.error("Classification error:", err);
-      res.status(500).json({ error: "Classification failed" });
-    }
-  },
-);
-
 // SSE streaming endpoint — emits batch results as they resolve
 emailsRouter.post(
   "/classify/stream",
