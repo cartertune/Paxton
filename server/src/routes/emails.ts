@@ -1,6 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { requireAuth } from "../middleware/requireAuth";
+import { requireAuth, getSessionToken } from "../middleware/requireAuth";
 import {
   fetchThreads,
   fetchThreadBody,
@@ -24,7 +24,7 @@ export const emailsRouter = Router();
 const classifyLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 5,
-  keyGenerator: (req) => req.session.id,
+  keyGenerator: (req) => getSessionToken(req) || "anonymous",
   message: {
     error: "Too many requests — please wait before classifying again.",
   },
@@ -35,7 +35,7 @@ const classifyLimiter = rateLimit({
 const pollLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
-  keyGenerator: (req) => req.session.id,
+  keyGenerator: (req) => getSessionToken(req) || "anonymous",
   message: { error: "Too many poll requests." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -74,7 +74,12 @@ emailsRouter.post(
     }));
 
     try {
-      const threads = await fetchThreads(req.session.id);
+      const token = getSessionToken(req);
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const threads = await fetchThreads(token);
       const classified = await classifyThreads(threads, bucketDefs);
       res.json({ threads: classified });
     } catch (err) {
@@ -112,7 +117,13 @@ emailsRouter.post(
     }
 
     try {
-      const threads = await fetchThreads(req.session.id);
+      const token = getSessionToken(req);
+      if (!token) {
+        send({ error: "Unauthorized" });
+        res.end();
+        return;
+      }
+      const threads = await fetchThreads(token);
 
       if (threads.length === 0) {
         send({ done: true, threads: [] });
@@ -140,7 +151,12 @@ emailsRouter.post(
 
 emailsRouter.get("/threads/ids", pollLimiter, requireAuth, async (req, res) => {
   try {
-    const ids = await fetchThreadIds(req.session.id);
+    const token = getSessionToken(req);
+    if (!token) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ids = await fetchThreadIds(token);
     res.json({ ids });
   } catch (err) {
     console.error("Thread IDs fetch error:", err);
@@ -181,7 +197,12 @@ emailsRouter.post(
     }));
 
     try {
-      const threads = await fetchThreadsByIds(req.session.id, threadIds);
+      const token = getSessionToken(req);
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const threads = await fetchThreadsByIds(token, threadIds);
       if (threads.length === 0) {
         res.json({ threads: [] });
         return;
@@ -202,7 +223,12 @@ emailsRouter.get("/thread/:id", requireAuth, async (req, res) => {
     return;
   }
   try {
-    const body = await fetchThreadBody(req.session.id, id);
+    const token = getSessionToken(req);
+    if (!token) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const body = await fetchThreadBody(token, id);
     res.json({ id, body });
   } catch (err) {
     console.error("Thread body fetch error:", err);
@@ -270,7 +296,12 @@ emailsRouter.post(
   requireAuth,
   async (req, res) => {
     try {
-      await markThreadRead(req.session.id, req.params.id as string);
+      const token = getSessionToken(req);
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      await markThreadRead(token, req.params.id as string);
       res.json({ ok: true });
     } catch (err) {
       console.error("Mark read error:", err);
@@ -285,7 +316,12 @@ emailsRouter.post(
   requireAuth,
   async (req, res) => {
     try {
-      await archiveThread(req.session.id, req.params.id as string);
+      const token = getSessionToken(req);
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      await archiveThread(token, req.params.id as string);
       res.json({ ok: true });
     } catch (err) {
       console.error("Archive error:", err);

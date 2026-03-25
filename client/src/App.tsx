@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "./api/client";
+import { api, setAuthToken, getAuthToken } from "./api/client";
 import { useEmailStore } from "./hooks/useEmailStore";
 import LoginPage from "./components/LoginPage";
 import EmailDashboard from "./components/EmailDashboard";
@@ -32,6 +32,25 @@ export default function App() {
   // On mount: check auth; load settings from DB; skip classification if we already have cached threads
   useEffect(() => {
     async function init() {
+      // Check for token in URL (from OAuth callback)
+      const urlParams = new URLSearchParams(window.location.search);
+      const tokenFromUrl = urlParams.get("token");
+      if (tokenFromUrl) {
+        setAuthToken(tokenFromUrl);
+        // Clean up URL
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname,
+        );
+      }
+
+      // Check if we have a token
+      if (!getAuthToken()) {
+        dispatch({ type: "SET_STATUS", payload: "idle" });
+        return;
+      }
+
       try {
         const { email } = await api.getMe();
         dispatch({ type: "SET_USER", payload: email });
@@ -166,6 +185,7 @@ export default function App() {
     try {
       await api.logout();
     } finally {
+      setAuthToken(null);
       dispatch({ type: "RESET" });
     }
   };

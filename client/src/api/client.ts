@@ -7,14 +7,36 @@ import type {
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
+// Token storage
+let authToken: string | null = localStorage.getItem("authToken");
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) {
+    localStorage.setItem("authToken", token);
+  } else {
+    localStorage.removeItem("authToken");
+  }
+}
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...init?.headers,
+  };
+
+  // Add Bearer token if available
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
 
   if (!res.ok) {
@@ -37,10 +59,18 @@ async function classifyStreamReal(
   bucketHints: Record<string, string>,
   callbacks: StreamCallbacks,
 ): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  // Add Bearer token if available
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
   const res = await fetch(`${BASE}/api/emails/classify/stream`, {
     method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ buckets, bucketHints }),
   });
 

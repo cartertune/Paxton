@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../middleware/requireAuth";
+import { requireAuth, getSessionToken } from "../middleware/requireAuth";
 import { tokenStore } from "../services/tokenStore";
 import { getBuckets, saveBuckets } from "../services/db";
 import { z } from "zod";
@@ -21,7 +21,13 @@ const BucketsSchema = z
   .max(20);
 
 settingsRouter.get("/", requireAuth, async (req, res) => {
-  const record = await tokenStore.get(req.session.id);
+  const token = getSessionToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const record = await tokenStore.get(token);
   if (!record) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -45,7 +51,13 @@ settingsRouter.put("/", requireAuth, async (req, res) => {
     return;
   }
 
-  const record = await tokenStore.get(req.session.id);
+  const token = getSessionToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const record = await tokenStore.get(token);
   if (!record) {
     res.status(401).json({ error: "Unauthorized" });
     return;

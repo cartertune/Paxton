@@ -42,24 +42,20 @@ authRouter.get("/callback", async (req, res) => {
     const { data } = await oauth2.userinfo.get();
     const email = data.email ?? "unknown";
 
-    console.log("[AUTH] Session ID:", req.session.id);
     console.log("[AUTH] Setting token for email:", email);
 
-    await tokenStore.set(req.session.id, { tokens, email });
+    // Generate a session token
+    const sessionToken = req.session.id;
+    await tokenStore.set(sessionToken, { tokens, email });
 
-    // Save session explicitly before redirecting so the cookie is committed
-    req.session.save((err) => {
-      if (err) {
-        console.error("Session save error:", err);
-        res.status(500).send("Session error");
-        return;
-      }
-      console.log(
-        "[AUTH] Session saved, redirecting to:",
-        process.env.CLIENT_ORIGIN,
-      );
-      res.redirect(process.env.CLIENT_ORIGIN ?? "http://localhost:5173");
-    });
+    console.log("[AUTH] Redirecting with token to:", process.env.CLIENT_ORIGIN);
+
+    // Redirect to frontend with token in URL
+    const redirectUrl = new URL(
+      process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
+    );
+    redirectUrl.searchParams.set("token", sessionToken);
+    res.redirect(redirectUrl.toString());
   } catch (err) {
     console.error("OAuth callback error:", err);
     res.status(500).send("OAuth error");
@@ -67,10 +63,20 @@ authRouter.get("/callback", async (req, res) => {
 });
 
 authRouter.get("/me", async (req, res) => {
-  console.log("[AUTH /me] Session ID:", req.session.id);
-  console.log("[AUTH /me] Cookies:", req.headers.cookie);
+  // Check for token in Authorization header
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : null;
 
-  const record = await tokenStore.get(req.session.id);
+  console.log("[AUTH /me] Token:", token ? "present" : "missing");
+
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const record = await tokenStore.get(token);
   console.log("[AUTH /me] Token found:", !!record);
 
   if (!record) {
@@ -81,8 +87,14 @@ authRouter.get("/me", async (req, res) => {
 });
 
 authRouter.post("/logout", async (req, res) => {
-  await tokenStore.delete(req.session.id);
-  req.session.destroy(() => {
-    res.json({ ok: true });
-  });
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : null;
+
+  if (token) {
+    await tokenStore.delete(token);
+  }
+
+  res.json({ ok: true });
 });
