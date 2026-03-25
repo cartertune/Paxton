@@ -48,7 +48,7 @@ const ClassifyBodySchema = z.object({
         .string()
         .min(1)
         .max(50)
-        .regex(/^[a-zA-Z0-9 _-]+$/),
+        .regex(/^[a-zA-Z0-9 _&'(),.!?-]+$/),
     )
     .min(1)
     .max(20),
@@ -172,7 +172,7 @@ const IncrementalClassifySchema = z.object({
         .string()
         .min(1)
         .max(50)
-        .regex(/^[a-zA-Z0-9 _-]+$/),
+        .regex(/^[a-zA-Z0-9 _&'(),.!?-]+$/),
     )
     .min(1)
     .max(20),

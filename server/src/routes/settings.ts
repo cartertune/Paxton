@@ -13,7 +13,7 @@ const BucketsSchema = z
         .string()
         .min(1)
         .max(50)
-        .regex(/^[a-zA-Z0-9 _-]+$/),
+        .regex(/^[a-zA-Z0-9 _&'(),.!?-]+$/),
       hint: z.string().max(300).optional(),
     }),
   )

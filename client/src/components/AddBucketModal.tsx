@@ -9,7 +9,7 @@ interface Props {
 
 function sanitize(name: string): string {
   return name
-    .replace(/[^a-zA-Z0-9 ]/g, "")
+    .replace(/[^a-zA-Z0-9 _&'(),.!?-]/g, "")
     .replace(/\s+/g, " ")
     .slice(0, 50);
 }
