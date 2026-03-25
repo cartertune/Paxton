@@ -71,6 +71,22 @@ async function initSchema() {
       // Column already exists — ignore
     }
 
+    // Backfill any rows that got empty string IDs from the migration default
+    const emptyRows = sqlite
+      .prepare("SELECT email, name FROM user_buckets WHERE id = ''")
+      .all() as { email: string; name: string }[];
+    if (emptyRows.length > 0) {
+      const backfill = sqlite.prepare(
+        "UPDATE user_buckets SET id = ? WHERE email = ? AND name = ?",
+      );
+      const tx = sqlite.transaction(() => {
+        for (const row of emptyRows) {
+          backfill.run(randomUUID(), row.email, row.name);
+        }
+      });
+      tx();
+    }
+
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS token_store (
         session_id TEXT PRIMARY KEY,
