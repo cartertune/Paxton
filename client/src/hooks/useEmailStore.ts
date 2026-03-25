@@ -23,7 +23,7 @@ export type Action =
   | { type: 'MARK_THREAD_READ'; payload: string }
   | { type: 'RESET' };
 
-const STORAGE_KEY = 'paxton_state';
+const STORAGE_KEY = 'paxton_state_v2';
 
 interface PersistedState {
   threads: Thread[];
@@ -34,18 +34,7 @@ function loadFromStorage(): Partial<PersistedState> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as PersistedState & { threads?: Array<Record<string, unknown>> };
-    // Migrate threads from old buckets[] (names) to bucketIds[] (ids)
-    if (parsed.threads) {
-      parsed.threads = parsed.threads.map((t) => {
-        if (!t.bucketIds && Array.isArray(t.buckets)) {
-          const { buckets, ...rest } = t as Record<string, unknown> & { buckets: string[] };
-          return { ...rest, bucketIds: buckets };
-        }
-        return t;
-      }) as Thread[];
-    }
-    return parsed;
+    return JSON.parse(raw) as PersistedState;
   } catch {
     return {};
   }
