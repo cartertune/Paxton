@@ -8,3 +8,14 @@ export interface Thread {
   buckets: string[];
   bucketReasons: Record<string, string>;
 }
+
+export interface DraftReply {
+  label: string;
+  body: string;
+}
+
+export interface DraftResult {
+  intent: string;
+  intentLabel: string;
+  drafts: DraftReply[];
+}

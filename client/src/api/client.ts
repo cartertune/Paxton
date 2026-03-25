@@ -1,4 +1,4 @@
-import type { Thread } from '../types';
+import type { Thread, DraftResult } from '../types';
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -142,6 +142,18 @@ export const api = {
     return apiFetch('/api/emails/classify/incremental', {
       method: 'POST',
       body: JSON.stringify({ threadIds, buckets, bucketHints }),
+    });
+  },
+
+  getDrafts(
+    threadId: string,
+    subject: string,
+    sender: string,
+    body: string,
+  ): Promise<DraftResult> {
+    return apiFetch(`/api/emails/thread/${threadId}/drafts`, {
+      method: 'POST',
+      body: JSON.stringify({ subject, sender, body }),
     });
   },
 };

@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/requireAuth';
 import { fetchThreads, fetchThreadBody, fetchThreadIds, fetchThreadsByIds } from '../services/gmail';
 import { classifyThreads, classifyThreadsStreaming } from '../services/classifier';
 import type { BucketDef } from '../services/classifier';
+import { generateDraftReplies } from '../services/drafts';
 import { z } from 'zod';
 
 export const emailsRouter = Router();
@@ -146,5 +147,27 @@ emailsRouter.get('/thread/:id', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Thread body fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch thread' });
+  }
+});
+
+const DraftsBodySchema = z.object({
+  subject: z.string().max(500),
+  sender: z.string().max(500),
+  body: z.string().max(10000),
+});
+
+emailsRouter.post('/thread/:id/drafts', pollLimiter, requireAuth, async (req, res) => {
+  const parsed = DraftsBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+  const { subject, sender, body } = parsed.data;
+  try {
+    const result = await generateDraftReplies(subject, sender, body);
+    res.json(result);
+  } catch (err) {
+    console.error('Draft generation error:', err);
+    res.status(500).json({ error: 'Failed to generate drafts' });
   }
 });

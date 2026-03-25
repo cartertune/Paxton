@@ -1,5 +1,6 @@
 import { useReducer } from 'react';
 import type { Thread } from '../types';
+import { clearAllCaches } from '../cache';
 
 export const DEFAULT_BUCKETS = ['Important', 'Needs Reply', 'Can Wait', 'Newsletter', 'Auto-archive'];
 export const DEFAULT_BUCKET_COUNT = DEFAULT_BUCKETS.length;
@@ -134,6 +135,7 @@ function reducer(state: AppState, action: Action): AppState {
       break;
     case 'RESET':
       clearStorage();
+      clearAllCaches();
       return { ...initialState, status: 'idle', threads: [], userEmail: null };
     default:
       return state;

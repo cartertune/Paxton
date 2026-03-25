@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Thread } from '../types';
+import type { Thread, DraftResult } from '../types';
 import { api } from '../api/client';
+import { getCachedBody, setCachedBody, getCachedDraft, setCachedDraft } from '../cache';
 
 interface Props {
   thread: Thread;
@@ -25,6 +26,35 @@ export default function ThreadDetailPanel({ thread, threads, onClose, onNavigate
   const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
+  type DraftState =
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'done'; result: DraftResult }
+    | { status: 'error' };
+  const [draftState, setDraftState] = useState<DraftState>({ status: 'idle' });
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+  const isNeedsReply = thread.buckets.includes('Needs Reply');
+
+  const handleGenerateDrafts = async () => {
+    if (!body) return;
+    setDraftState({ status: 'loading' });
+    try {
+      const result = await api.getDrafts(thread.id, thread.subject, thread.sender, body);
+      setCachedDraft(thread.id, result);
+      setDraftState({ status: 'done', result });
+    } catch {
+      setDraftState({ status: 'error' });
+    }
+  };
+
+  const handleCopy = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 2000);
+    });
+  };
+
   const currentIndex = threads.findIndex((t) => t.id === thread.id);
   const prevThread = currentIndex > 0 ? threads[currentIndex - 1] : null;
   const nextThread = currentIndex < threads.length - 1 ? threads[currentIndex + 1] : null;
@@ -34,8 +64,37 @@ export default function ThreadDetailPanel({ thread, threads, onClose, onNavigate
     setLoading(true);
     setError(false);
     setExpanded(false);
+
+    const cachedDraft = getCachedDraft(thread.id);
+    setDraftState(cachedDraft ? { status: 'done', result: cachedDraft } : { status: 'idle' });
+
+    const generateDraftsIfNeeded = (bodyText: string) => {
+      if (thread.buckets.includes('Needs Reply') && bodyText && !getCachedDraft(thread.id)) {
+        setDraftState({ status: 'loading' });
+        api.getDrafts(thread.id, thread.subject, thread.sender, bodyText)
+          .then((result) => {
+            setCachedDraft(thread.id, result);
+            setDraftState({ status: 'done', result });
+          })
+          .catch(() => setDraftState({ status: 'error' }));
+      }
+    };
+
+    const cachedBody = getCachedBody(thread.id);
+    if (cachedBody) {
+      setBody(cachedBody);
+      setLoading(false);
+      generateDraftsIfNeeded(cachedBody);
+      return;
+    }
+
     api.getThreadBody(thread.id)
-      .then((res) => { setBody(res.body); setLoading(false); })
+      .then((res) => {
+        setBody(res.body);
+        setLoading(false);
+        setCachedBody(thread.id, res.body);
+        generateDraftsIfNeeded(res.body);
+      })
       .catch(() => { setError(true); setLoading(false); });
   }, [thread.id]);
 
@@ -164,13 +223,80 @@ export default function ThreadDetailPanel({ thread, threads, onClose, onNavigate
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="px-5 py-4">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Actions</h3>
-            <div className="border border-dashed border-gray-200 rounded-lg px-4 py-5 text-center text-xs text-gray-300">
-              Actions coming soon
+          {/* Draft replies — only for Needs Reply emails */}
+          {isNeedsReply && (
+            <div className="px-5 py-4">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Draft a reply</h3>
+
+              {draftState.status === 'idle' && null}
+
+              {draftState.status === 'loading' && (
+                <div className="flex items-center gap-2 text-sm text-stone-400">
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Drafting replies…
+                </div>
+              )}
+
+              {draftState.status === 'error' && (
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-red-400">Could not generate drafts.</p>
+                  <button
+                    onClick={handleGenerateDrafts}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {draftState.status === 'done' && (
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs text-stone-400">
+                    Detected: <span className="font-medium text-stone-600">{draftState.result.intentLabel}</span>
+                  </p>
+                  {draftState.result.drafts.map((draft, idx) => (
+                    <div key={idx} className="border border-stone-200 rounded-lg overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 bg-stone-50 border-b border-stone-200">
+                        <span className="text-xs font-semibold text-stone-600">{draft.label}</span>
+                        <button
+                          onClick={() => handleCopy(draft.body, idx)}
+                          className="flex items-center gap-1 text-xs text-stone-400 hover:text-stone-700 transition-colors"
+                        >
+                          {copiedIdx === idx ? (
+                            <>
+                              <svg className="w-3.5 h-3.5 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                <path d="M20 6 9 17l-5-5" />
+                              </svg>
+                              <span className="text-green-600 font-medium">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                              Copy
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <pre className="px-3 py-2.5 text-xs text-stone-700 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">
+                        {draft.body}
+                      </pre>
+                    </div>
+                  ))}
+                  <button
+                    onClick={handleGenerateDrafts}
+                    className="text-xs text-stone-400 hover:text-stone-600 self-start transition-colors"
+                  >
+                    Regenerate
+                  </button>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </>
